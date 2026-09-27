@@ -1,0 +1,125 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>OnlineChat</title>
+  <link rel="stylesheet" href="{% static 'app.css' %}">
+</head>
+<body>
+
+<!-- ───────────── Auth ───────────── -->
+<section id="auth" class="auth">
+  <div class="auth-card">
+    <h1>OnlineChat</h1>
+
+    <div class="tabs">
+      <button class="tab is-active" data-mode="login">Log in</button>
+      <button class="tab" data-mode="register">Register</button>
+    </div>
+
+    <form id="auth-form" autocomplete="on">
+      <label>
+        Phone number
+        <input name="phone_number" type="tel" required placeholder="+998 90 123 45 67"
+               autocomplete="tel">
+      </label>
+
+      <label class="only-register" hidden>
+        Name
+        <input name="first_name" type="text" placeholder="Ali" autocomplete="given-name">
+      </label>
+
+      <label>
+        Password
+        <input name="password" type="password" required autocomplete="current-password">
+      </label>
+
+      <label class="only-register" hidden>
+        Confirm password
+        <input name="confirm_password" type="password" autocomplete="new-password">
+      </label>
+
+      <p id="auth-error" class="error" hidden></p>
+      <button type="submit" class="primary" id="auth-submit">Log in</button>
+    </form>
+  </div>
+</section>
+
+<!-- ───────────── App ───────────── -->
+<main id="app" class="app" hidden>
+
+  <aside class="sidebar">
+    <header class="me">
+      <img id="me-avatar" class="avatar" alt="">
+      <div class="me-text">
+        <strong id="me-name">…</strong>
+        <span id="me-phone" class="muted"></span>
+      </div>
+      <button id="open-profile" class="icon-btn" title="Profile">⚙</button>
+      <button id="logout" class="icon-btn" title="Log out">⏻</button>
+    </header>
+
+    <form id="lookup-form" class="lookup">
+      <input name="phone_number" type="tel" placeholder="Find someone by phone…" required>
+      <button type="submit" class="icon-btn" title="Search">🔍</button>
+    </form>
+    <p id="lookup-msg" class="lookup-msg" hidden></p>
+
+    <ul id="chat-list" class="chat-list"></ul>
+    <p id="chat-empty" class="empty">No conversations yet.<br>Search for a phone number to start one.</p>
+  </aside>
+
+  <section class="pane">
+    <div id="pane-empty" class="empty pane-empty">Pick a conversation</div>
+
+    <div id="pane-chat" hidden>
+      <header class="pane-head">
+        <button id="back" class="icon-btn only-narrow" title="Back">←</button>
+        <img id="peer-avatar" class="avatar" alt="">
+        <div>
+          <strong id="peer-name"></strong>
+          <span id="peer-status" class="muted status"></span>
+        </div>
+        <span id="conn-state" class="conn" title="Connection"></span>
+      </header>
+
+      <div id="messages" class="messages">
+        <button id="load-older" class="load-older" hidden>Load older messages</button>
+        <div id="message-rows"></div>
+      </div>
+
+      <form id="send-form" class="composer">
+        <textarea id="composer-input" rows="1" placeholder="Write a message…"
+                  autocomplete="off"></textarea>
+        <button type="submit" class="primary send">Send</button>
+      </form>
+      <p id="send-error" class="error composer-error" hidden></p>
+    </div>
+  </section>
+</main>
+
+<!-- ───────────── Profile dialog ───────────── -->
+<dialog id="profile-dialog">
+  <form id="profile-form" method="dialog">
+    <h2>Your profile</h2>
+    <label>
+      Name
+      <input name="first_name" type="text" required>
+    </label>
+    <label>
+      Avatar
+      <input name="avatar" type="file" accept="image/*">
+    </label>
+    <p class="muted small">Your phone number can't be changed here.</p>
+    <p id="profile-error" class="error" hidden></p>
+    <menu>
+      <button type="button" id="profile-cancel">Cancel</button>
+      <button type="button" id="profile-save" class="primary">Save</button>
+    </menu>
+  </form>
+</dialog>
+
+<script src="{% static 'app.js' %}"></script>
+</body>
+</html>
