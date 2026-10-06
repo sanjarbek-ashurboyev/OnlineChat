@@ -2,3 +2,9 @@
 .venv/
 *.sqlite3
 .idea
+# Python cache
+__pycache__/
+*.pyc
+
+# User uploads
+media/
