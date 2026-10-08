@@ -1,0 +1,31 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: pip install ruff==0.16.10
+      - run: ruff check --output-format=github .
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -r requirements.txt
+      # SQLite, an in-memory channel layer and a fake presence store: no PostgreSQL or Redis needed.
+      - run: python manage.py test --settings=root.settings_test --verbosity 2
+      - name: Migrations are up to date
+        run: python manage.py makemigrations --check --dry-run --settings=root.settings_test

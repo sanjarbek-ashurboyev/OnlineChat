@@ -4,7 +4,7 @@ from rest_framework.serializers import ModelSerializer, Serializer, ValidationEr
 
 from accounts.models import User
 from accounts.serializers import PublicUserSerializer
-from chats.models import Block, Chat, Message
+from chats.models import MAX_MESSAGE_LENGTH, Block, Chat, Message
 
 
 class MessageSerializer(ModelSerializer):
@@ -14,6 +14,7 @@ class MessageSerializer(ModelSerializer):
         model = Message
         fields = ['id', 'sender_id', 'text', 'created_at', 'is_read', 'read_at']
         read_only_fields = ['id', 'sender_id', 'created_at', 'is_read', 'read_at']
+        extra_kwargs = {'text': {'max_length': MAX_MESSAGE_LENGTH}}
 
 
 class ChatSerializer(ModelSerializer):

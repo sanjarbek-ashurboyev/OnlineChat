@@ -1,8 +1,12 @@
 from django.shortcuts import get_object_or_404
-from drf_spectacular.utils import extend_schema, OpenApiParameter
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from phonenumber_field.phonenumber import to_python
 from rest_framework.exceptions import ValidationError
-from rest_framework.generics import CreateAPIView, RetrieveAPIView, RetrieveUpdateAPIView
+from rest_framework.generics import (
+    CreateAPIView,
+    RetrieveAPIView,
+    RetrieveUpdateAPIView,
+)
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView

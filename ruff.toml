@@ -1,0 +1,6 @@
+# Lint rules shared by CI and local runs: `ruff check .`
+extend-exclude = ["*/migrations/*"]
+
+[lint]
+# Pyflakes and pycodestyle errors (Ruff's defaults), import sorting, and bugbear's likely-bug checks.
+select = ["E4", "E7", "E9", "F", "I", "B"]

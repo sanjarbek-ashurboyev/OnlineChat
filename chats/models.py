@@ -1,9 +1,22 @@
-from django.db import models
-from django.db.models import Model, ForeignKey, CASCADE, DateTimeField, Manager, TextField, BooleanField, Index, \
-    CheckConstraint, Q, F
+from django.db.models import (
+    CASCADE,
+    BooleanField,
+    CheckConstraint,
+    DateTimeField,
+    F,
+    ForeignKey,
+    Index,
+    Manager,
+    Model,
+    Q,
+    TextField,
+)
+
+# Applied by the REST serializer and the WebSocket consumer alike. Without it one
+# client could push arbitrarily large messages into the database and to every socket.
+MAX_MESSAGE_LENGTH = 4000
 
 
-# Create your models here.
 class ChatManager(Manager):
     def get_or_create_chat(self, user_a, user_b):
         user1, user2 = sorted([user_a, user_b], key=lambda u: u.pk)
