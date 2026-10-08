@@ -23,10 +23,14 @@ class InboxSocketTestCase(FakePresenceMixin, TestCase):
         token = token_for(user) if user is not None else token
         socket = WebsocketCommunicator(application, f'/ws/inbox/?token={token}', headers=origin)
         connected, close_code = await socket.connect()
-        if connected:
-            self.sockets.append(socket)
-            return socket
-        return close_code
+        if not connected:
+            return close_code
+        self.sockets.append(socket)
+        # connect() returns once the socket is accepted, but the consumer records presence
+        # after accepting. It handles events in order, so a pong means connect() has finished.
+        await socket.send_json_to({'action': 'ping'})
+        self.assertEqual(await socket.receive_json_from(), {'type': 'pong'})
+        return socket
 
     async def close_all(self):
         for socket in self.sockets:
