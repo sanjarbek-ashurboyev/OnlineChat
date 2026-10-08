@@ -1,7 +1,13 @@
 from django.urls import path
 
-from accounts.views import RegisterCreateAPIView, CustomTokenObtainPairView, CustomTokenRefreshView, ProfileAPIView, \
-    UserLookupAPIView, PublicUserAPIView
+from accounts.views import (
+    CustomTokenObtainPairView,
+    CustomTokenRefreshView,
+    ProfileAPIView,
+    PublicUserAPIView,
+    RegisterCreateAPIView,
+    UserLookupAPIView,
+)
 
 urlpatterns = [
     path('auth/register/', RegisterCreateAPIView.as_view(), name='register'),

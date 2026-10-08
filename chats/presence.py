@@ -74,7 +74,7 @@ def online_map(user_ids):
         pipe = client().pipeline()
         for user_id in ids:
             pipe.scard(key(user_id))
-        return {uid: count > 0 for uid, count in zip(ids, pipe.execute())}
+        return {uid: count > 0 for uid, count in zip(ids, pipe.execute(), strict=True)}
     except redis.RedisError:
         logger.exception('presence: online_map failed')
         return {uid: False for uid in ids}
