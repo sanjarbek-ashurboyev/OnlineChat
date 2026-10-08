@@ -1,5 +1,7 @@
 # OnlineChat
 
+[![Tests](https://github.com/sanjarbek-ashurboyev/OnlineChat/actions/workflows/tests.yml/badge.svg)](https://github.com/sanjarbek-ashurboyev/OnlineChat/actions/workflows/tests.yml)
+
 Real-time one-to-one chat. Messages arrive instantly over WebSockets, users see who is
 online, and unread messages get read receipts. Built with Django Channels and Redis,
 with a REST API for chat history.
@@ -16,6 +18,8 @@ with a REST API for chat history.
   a crashed client goes offline automatically instead of staying "online" forever.
 - **Read receipts.** Marking a chat as read updates the messages and notifies the sender
   in real time.
+- **Message limits.** Messages are capped at 4,000 characters on both the WebSocket and
+  the REST API.
 - **Blocking.** A block between two users stops new messages over both the REST API and
   the WebSocket. (The data model and checks are in place; an endpoint for users to
   create blocks is not built yet.)
@@ -68,6 +72,21 @@ python3 -m venv .venv
 ```
 
 Open http://127.0.0.1:8000/ in two browsers, register two users, and chat between them.
+
+## Tests
+
+48 tests cover registration, login and the phone-number lookup (including its rate limit
+and blocking), the chat and message REST API, and the WebSocket itself. The WebSocket tests
+connect through the full ASGI stack (origin check, JWT middleware, router, consumer) and
+check that messages reach both participants and nobody else, that outsiders, blocked users
+and oversized messages are refused, read receipts, and online presence across several tabs.
+
+They use SQLite, an in-memory channel layer and an in-memory stand-in for the presence
+store, so no PostgreSQL or Redis is needed:
+
+```bash
+make test
+```
 
 ## License
 

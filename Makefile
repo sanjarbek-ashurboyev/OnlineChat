@@ -1,3 +1,6 @@
+test:
+	python manage.py test --settings=root.settings_test
+
 mig:
 	python manage.py makemigrations
 	python manage.py migrate

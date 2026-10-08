@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from accounts.models import User
 from chats import presence
-from chats.models import Block, Chat, Message
+from chats.models import MAX_MESSAGE_LENGTH, Block, Chat, Message
 
 CLOSE_UNAUTHENTICATED = 4401
 
@@ -104,6 +104,10 @@ class InboxConsumer(AsyncWebsocketConsumer):
         text = (payload.get('text') or '').strip()
         if not text:
             await self.send_error('text must not be empty.', chat_id=chat.pk)
+            return
+        if len(text) > MAX_MESSAGE_LENGTH:
+            await self.send_error(f'text must be at most {MAX_MESSAGE_LENGTH} characters.',
+                                  chat_id=chat.pk)
             return
 
         if await self.is_blocked(chat):
