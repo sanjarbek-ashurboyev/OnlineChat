@@ -205,3 +205,22 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
 - **Lesson:** cleanup code must not depend on every step succeeding. Do the most important step (mark offline)
   regardless, and log the rest. A "too many connections" error is often a *client-side pool* limit, not the server's.
 
+## P-14 · Dependabot PRs that could never be merged
+
+- **Sessions:** [007](sessions/007-t11-tests-and-ci.md), [008](sessions/008-t02-disconnect-marks-offline.md)
+- **Observed:** after PR #14, Dependabot PR #12 (aiohttp for the load test) sat with two required checks
+  "expected" forever. `@dependabot rebase` got the reply: *"The dependabot.yml entry that created this PR has been
+  deleted so this PR can't be rebased."*
+- **Root cause (Confirmed, Dependabot's own reply):**
+  1. `dependabot.yml` had both a `/` entry (which already covers `loadtest/`) and a `/loadtest` entry, so the
+     same update arrived twice: #12 from `/loadtest`, #13 from `/`.
+  2. PR #14 removed the `/loadtest` entry, which **orphaned #12**: Dependabot no longer manages it, so it can't rebase it.
+  3. The advice was to close **#13**, the one from the entry we *kept*. Closing a Dependabot PR makes it **skip
+     that release** ("I won't notify you again about this release") and **deletes its branch**, so
+     `@dependabot reopen` did nothing.
+  4. Without a rebase, #12 never ran the two jobs added in #14, and the ruleset requires them.
+- **Fix:** made the same one-line change ourselves in PR #16 (auto-merged after 4 green checks), and closed #12
+  with a comment pointing to #16.
+- **Lesson:** before removing a Dependabot config entry, close the PRs it created. When two PRs duplicate each
+  other, keep the one from the entry that stays. Closing a Dependabot PR is not neutral: it skips that version.
+

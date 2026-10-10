@@ -13,6 +13,7 @@ It follows the real repository: file names, commands and results are the actual 
 | [concepts/](concepts/README.md) | One guide per idea (WebSockets, JWT, env config…), from simple to advanced | When a session mentions an idea you can't explain yet |
 | [decisions/](decisions/README.md) | Why we chose X over Y, with the trade-offs | Before changing something a decision covers; before interviews |
 | [problems-and-solutions.md](problems-and-solutions.md) | Every real problem we hit, its root cause, how we diagnosed and fixed it | When something similar breaks |
+| [../../GOTCHA.md](../../GOTCHA.md) | The short version: one rule per trap, linking back here | **Before starting any work** |
 | [sessions/](sessions/) | One numbered note per work session: what we did, learned, left open | Chronologically, to relive the project |
 
 ### Sessions so far

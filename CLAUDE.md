@@ -72,6 +72,8 @@ Source of the guidelines above: https://github.com/multica-ai/andrej-karpathy-sk
 
 - Django + Channels chat app: REST API (DRF + SimpleJWT) and one WebSocket per user (`chats/consumers.py`), Redis for the channel layer, cache and presence, Postgres for data.
 - The scaling plan and task backlog (T-01…T-37) live in `docs/scaling/`. Start from `docs/scaling/README.md`.
+- **Before any work, read `GOTCHA.md`**: the traps this project has already hit. When a new mistake costs time,
+  add a one-line rule there, plus the full story in `docs/learning-journal/problems-and-solutions.md`.
 - Before any work: `git fetch` and check `git status -sb`. If `main` is behind `origin/main`, pull first.
 - One branch per task, named `t-NN-short-name`, branched from an up-to-date `main`. **Every change, docs included,
   goes through a pull request.** The `protect-main` ruleset blocks direct pushes and requires `lint`, `test`,
