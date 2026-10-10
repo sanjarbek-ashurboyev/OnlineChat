@@ -1,6 +1,7 @@
 from datetime import timedelta
 from unittest import mock
 
+from django.core.cache import cache
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -55,6 +56,17 @@ class StartChatTests(FakePresenceMixin, TestCase):
 
     def test_requires_authentication(self):
         self.assertEqual(APIClient().post(CHATS, {'participant_id': self.other.id}).status_code, 401)
+
+    def test_starting_chats_is_limited_to_30_an_hour_but_listing_is_not(self):
+        # SEC-4: stops one account from messaging every user.
+        cache.clear()
+        self.addCleanup(cache.clear)
+        for _ in range(30):
+            self.assertEqual(self.start(self.other.id).status_code, 201)
+        self.assertEqual(self.start(self.other.id).status_code, 429)
+        self.assertEqual(client_for(self.me).get(CHATS).status_code, 200)
+        self.assertEqual(self.start(self.me.id, user=self.other).status_code, 201,
+                         'other users are unaffected')
 
 
 class ChatListTests(FakePresenceMixin, TestCase):
