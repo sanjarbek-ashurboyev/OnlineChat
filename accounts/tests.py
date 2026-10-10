@@ -53,6 +53,8 @@ class RegisterTests(TestCase):
 
 
 class LoginTests(TestCase):
+    REFRESH_URL = '/api/v1/auth/token/refresh/'
+
     def setUp(self):
         self.user = make_user()
 
@@ -63,6 +65,24 @@ class LoginTests(TestCase):
 
     def test_wrong_password_is_refused(self):
         response = APIClient().post('/api/v1/auth/login/', {'phone_number': phone(1), 'password': 'nope'})
+        self.assertEqual(response.status_code, 401)
+
+    def test_a_refresh_token_gets_a_working_access_token(self):
+        tokens = APIClient().post('/api/v1/auth/login/',
+                                  {'phone_number': phone(1), 'password': PASSWORD}).data
+        response = APIClient().post(self.REFRESH_URL, {'refresh': tokens['refresh']})
+        self.assertEqual(response.status_code, 200)
+
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {response.data['access']}")
+        self.assertEqual(client.get('/api/v1/auth/profile/').status_code, 200)
+
+    def test_a_bad_refresh_token_is_refused(self):
+        self.assertEqual(APIClient().post(self.REFRESH_URL, {'refresh': 'garbage'}).status_code, 401)
+
+    def test_an_access_token_cannot_be_used_to_refresh(self):
+        # Otherwise a short-lived access token could be renewed forever.
+        response = APIClient().post(self.REFRESH_URL, {'refresh': token_for(self.user)})
         self.assertEqual(response.status_code, 401)
 
     def test_an_authenticated_request_records_last_seen(self):

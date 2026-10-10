@@ -1,0 +1,17 @@
+# Secret scanning rules for `gitleaks git .` (run in CI over the full history).
+# Gitleaks' built-in rules did not catch the Django SECRET_KEY this project once
+# committed, so this adds a rule for exactly that mistake.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "django-secret-key"
+description = "Hard-coded Django SECRET_KEY: it signs sessions and login tokens"
+regex = '''SECRET_KEY\s*=\s*['"]([^'"\s]{20,})['"]'''
+secretGroup = 1
+keywords = ["secret_key"]
+
+# The development-only fallback in root/settings.py. It is only used when DEBUG is
+# on, and its name says what it is.
+[[rules.allowlists]]
+regexes = ['''^django-insecure-local-development-only$''']

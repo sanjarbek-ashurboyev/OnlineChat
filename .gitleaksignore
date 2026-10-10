@@ -1,0 +1,5 @@
+# Known leaks that cannot be removed from history. Each one must already be revoked.
+#
+# The original SECRET_KEY, committed in the initial commit. It was replaced (T-01) and
+# must never be used again. See docs/scaling/01-audit.md, SEC-1.
+3bd73a8f2bedca1e51b54dc99873f8f14ff12d07:root/settings.py:django-secret-key:13
