@@ -290,6 +290,16 @@ async function loadHistory(chatId, page = 1) {
   return data;
 }
 
+/** Append what arrived in the open chat while the socket was down. */
+async function catchUp(chatId) {
+  const after = Math.max(0, ...state.seenIds);
+  const data = await api(`/chats/${chatId}/messages/?after=${after}`);
+  if (chatId !== state.activeId) return;           // the user switched chats meanwhile
+  if (data.next) { openChat(chatId); return; }     // missed more than a page: reload
+  for (const msg of data.results) appendMessage(msg);
+  if (data.results.length) scrollToBottom();
+}
+
 $('load-older').addEventListener('click', async () => {
   const box = $('messages');
   const before = box.scrollHeight;
@@ -385,8 +395,14 @@ function connectInbox() {
   state.ws = ws;
 
   ws.onopen = () => {
+    const reconnected = state.retry > 0;
     state.retry = 0;
     setConn('is-open');
+    // The socket doesn't replay what it missed while down; Postgres has it (COR-1).
+    if (reconnected) {
+      if (state.activeId) catchUp(state.activeId);
+      loadChats();
+    }
     if (state.activeId) sendRead(state.activeId);
     state.pingTimer = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ action: 'ping' }));
@@ -434,14 +450,20 @@ function connectInbox() {
     setConn('is-down');
     if (!state.me) return;                   // logged out on purpose
 
-    // 4401 means the token expired mid-session: renew, then reconnect.
+    // Full jitter: a random wait up to the backoff, so after a restart every client
+    // doesn't reconnect in the same instant (COR-4).
+    const reconnectLater = () => {
+      const delay = Math.random() * Math.min(1000 * 2 ** state.retry++, 15000);
+      setTimeout(() => { if (state.me) connectInbox(); }, delay);
+    };
+
+    // 4401 means the token expired mid-session: renew, then reconnect. Through the
+    // backoff too, so a token the server keeps refusing can't cause a tight loop.
     if (event.code === 4401) {
-      refreshAccess().then((ok) => (ok ? connectInbox() : logout()));
+      refreshAccess().then((ok) => (ok ? reconnectLater() : logout()));
       return;
     }
-
-    const delay = Math.min(1000 * 2 ** state.retry++, 15000);
-    setTimeout(() => { if (state.me) connectInbox(); }, delay);
+    reconnectLater();
   };
 }
 

@@ -1,6 +1,6 @@
 # Progress
 
-*Updated: 2026-10-10 (session 010).*
+*Updated: 2026-10-11 (session 011).*
 
 **Status words:** **Done** = code written, tests or checks run and passing, committed.
 **Partial** = some of the acceptance criteria are met. **Blocked** = waiting on something outside
@@ -27,8 +27,8 @@ were already fixed on `main` before this journal started.
 | Branch protection (`protect-main` ruleset) | **Done** (by you) | Read back through the API: active on `main`, PR plus 4 checks plus up-to-date required | GitHub settings |
 | T-02 Disconnect always marks offline (COR-2) | **Done**, merged as [PR #15](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/15) | Regression test fails before and passes after; 54/54 tests; all 4 CI jobs. Load-test acceptance not run yet | `main` `6c6e16d` |
 | T-03 Throttles for login, registration, refresh, profiles, new chats (SEC-3, SEC-4) | **Done**, merged as [PR #18](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/18) | Tests failed first, then 62/62 pass; all 4 CI jobs. `NUM_PROXIES` and the load-test acceptance not done yet | `main` `f16a18b` |
-| T-04 WebSocket input checks, frame limit per socket, 5 sockets per user (COR-3, SEC-5) | **Done** locally, PR open | COR-3 reproduced by a failing test, then 68/68 pass; Ruff clean. DB `CHECK` and load-test acceptance not done | `t-04-ws-input-validation` |
-| T-09 Gap fetch + reconnect jitter | Planned | | |
+| T-04 WebSocket input checks, frame limit per socket, 5 sockets per user (COR-3, SEC-5) | **Done**, merged as [PR #19](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/19) | COR-3 reproduced by a failing test, then 68/68 pass; all 4 CI jobs. DB `CHECK` and load-test acceptance not done | `main` `66060a7` |
+| T-09 Gap fetch, reconnect jitter, visible close codes (COR-1, COR-4, COR-5) | **Partial**, PR open | Tests failed first, then 72/72 pass; Ruff clean; `node --check` OK. **Client not yet run in a browser** (Docker down) | `t-09-gap-fetch-jitter` |
 | Baseline load test (realistic profile, second machine) | Planned | | |
 
 Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), and 50/50 tests pass locally.
@@ -37,7 +37,7 @@ Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), a
 
 | What | How | Result |
 |---|---|---|
-| Test suite | `make test` (`manage.py test --settings=root.settings_test`) | 68 on the T-04 branch, all pass |
+| Test suite | `make test` (`manage.py test --settings=root.settings_test`) | 72 on the T-09 branch, all pass |
 | Test suite on real services | CI job `test-postgres-redis` (Postgres 17, Redis 7, normal settings) | 53 pass (T-11 branch) |
 | No secrets in history | CI job `secrets` (gitleaks 8.30.1, custom `django-secret-key` rule) | Clean; a planted key is caught |
 | Lint | `ruff check .` (version 0.16.10, as in CI) | Clean |
@@ -50,8 +50,7 @@ Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), a
 ## Known issues (open)
 
 See the [audit](../scaling/01-audit.md) and its status update. The most important still-open items:
-- SEC-3/4 fixed by T-03 (merged). SEC-5 and COR-3 fixed on the T-04 branch (frame limit, type checks, socket cap).
-- **COR-1:** messages that arrive during a reconnect never show in the open chat (T-09).
+- SEC-3/4/5 and COR-3 fixed (T-03, T-04, merged). COR-1/4/5 fixed on the T-09 branch; the browser side still needs a manual check.
 - **PERF-1/2/3:** one DB thread per process, plus a new DB connection per call (Stage 1).
 - Dependabot backlog cleared: #8–#11 merged; #12 and #13 replaced by #16 ([P-14](problems-and-solutions.md#p-14--dependabot-prs-that-could-never-be-merged)).
   Auto-merge is on: for new Dependabot PRs, comment `@dependabot rebase`, then enable auto-merge.
@@ -83,6 +82,7 @@ That's self-reported; nothing has been tested yet, so every concept starts at
 | Git branches, merge, rebase | [guide](concepts/git-branches-merge-rebase.md) | Explained | Sessions 002, 003 | In a throwaway repo, make a fast-forward merge, a rebase and a `--force-with-lease` push to a local bare remote. |
 | Performance, bottlenecks, load testing | [guide](concepts/performance-and-load-testing.md) | Explained | Session 001 | Recompute the PERF-4 table yourself for 150 users. Predict healthy or failing. |
 | Rate limiting (throttles) | [guide](concepts/rate-limiting.md) | Explained | Session 009 | Run the server, then send 6 wrong logins for one number with `curl` in a loop. Read the 429 and its `Retry-After` header. Predict when the 7th will work, then check. |
+| Reliable delivery, cursors, jitter | [guide](concepts/reliable-delivery-and-reconnects.md) | Explained | Session 011 | With the app running, open a chat, stop the server for 10 s, send a message from the other account over REST, start the server. Predict what the chat shows, then watch DevTools → Network for the `?after=` request. |
 | Testing, CI, test databases, secret scanning | [guide](concepts/testing-and-ci.md) | Explained | Session 007 | Break a test on purpose (change an expected status code), push to a PR branch, and read the CI log to find it. Then explain P-12 in your own words. |
 
 Mark a row *Practiced* yourself after doing its exercise. It becomes *Demonstrated* when you
