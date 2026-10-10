@@ -1,6 +1,13 @@
+from datetime import timedelta
+
+import jwt
+from django.conf import settings
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.tokens import AccessToken
 
 from accounts.models import User
 from chats.models import Block
@@ -140,3 +147,19 @@ class PublicUserTests(FakePresenceMixin, TestCase):
     def test_someone_who_blocked_you_is_hidden(self):
         Block.objects.create(blocker=self.other, blocked=self.me)
         self.assertEqual(client_for(self.me).get(self.url()).status_code, 404)
+
+
+class SigningKeyTests(SimpleTestCase):
+    """SEC-1: tokens must be signed with this environment's key and no other."""
+
+    def forge(self, key):
+        now = timezone.now()
+        claims = {**AccessToken().payload, 'user_id': '1', 'iat': now, 'exp': now + timedelta(minutes=5)}
+        return jwt.encode(claims, key, algorithm='HS256')
+
+    def test_token_signed_with_our_key_is_accepted(self):
+        AccessToken(self.forge(settings.SECRET_KEY))
+
+    def test_token_signed_with_another_key_is_rejected(self):
+        with self.assertRaises(TokenError):
+            AccessToken(self.forge('a-key-somebody-else-knows'))
