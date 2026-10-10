@@ -41,3 +41,57 @@ jobs:
           DB_USER: unused
           DB_PASSWORD: unused
         run: python manage.py check --deploy --tag security --fail-level WARNING
+
+  # Same suite against the real services, with the normal settings: catches what
+  # SQLite and the in-memory channel layer hide (Postgres SQL and constraints,
+  # Redis channel layer and cache).
+  test-postgres-redis:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: onlinechat
+          POSTGRES_USER: onlinechat_user
+          POSTGRES_PASSWORD: ci-only-password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U onlinechat_user -d onlinechat"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DB_NAME: onlinechat
+      DB_USER: onlinechat_user
+      DB_PASSWORD: ci-only-password
+      DB_HOST: localhost
+      REDIS_HOST: localhost
+      DJANGO_SECRET_KEY: ci-only-${{ github.run_id }}-not-a-real-secret-but-long-enough-for-w009
+      DJANGO_ALLOWED_HOSTS: localhost
+      # DEBUG is off, so production's HTTPS redirect would answer every test request with a 301.
+      DJANGO_SSL_REDIRECT: "False"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python manage.py test --verbosity 2
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # the whole history, not just the last commit
+      - name: No secrets in the code or its history (gitleaks)
+        run: |
+          curl -sSfL -o gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks git . --redact --no-banner --verbose
