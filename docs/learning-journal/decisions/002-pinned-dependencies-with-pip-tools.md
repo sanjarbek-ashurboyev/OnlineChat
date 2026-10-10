@@ -1,6 +1,6 @@
 # 002 · Pin all dependencies with pip-tools
 
-- **Date:** 2026-10-10 · **Task:** T-08 · **Status:** Accepted · **Commit:** `ec6f48e` (branch `t-08-pinned-deps`)
+- **Date:** 2026-10-10 · **Task:** T-08 · **Status:** Accepted · **Commit:** `ec6f48e`, merged in PR #7
 
 ## Problem
 `requirements.txt` was missing `daphne`, `channels`, `channels-redis` and `redis`, listed the wrong

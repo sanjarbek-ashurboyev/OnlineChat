@@ -76,7 +76,7 @@ Source of the guidelines above: https://github.com/multica-ai/andrej-karpathy-sk
 - One branch per task, named `t-NN-short-name`, branched from an up-to-date `main`. Docs-only changes may go straight to `main`.
 - Before pushing, run what CI runs: `make test` (Django's runner with `root/settings_test.py`) and `ruff check .`.
 - `DJANGO_DEBUG` uses `True`/`False`, following the existing convention.
-- Dependencies (once T-08 is merged): edit `requirements.in`, then regenerate with Python 3.13 using
+- Dependencies: edit `requirements.in`, then regenerate with Python 3.13 using
   `pip-compile --strip-extras requirements.in`. Never hand-edit `requirements.txt`.
 - Settings come from `.env` (see `.env.example`). Never commit `.env` or put a secret in code.
 

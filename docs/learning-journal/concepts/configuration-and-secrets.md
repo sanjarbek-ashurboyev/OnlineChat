@@ -45,8 +45,7 @@ if not SECRET_KEY:
 - **The key:** in production (DEBUG off) a missing key stops startup. In development there's a
   clearly fake fallback, so a new developer can start without generating one. That's safe *because*
   the fallback only exists when DEBUG is on, and the HTTPS settings below are tied to DEBUG being off.
-- `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` (T-01 branch) are comma-separated lists.
-- The rest of this section describes the T-01 branch.
+- `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` are comma-separated lists.
 - When `DEBUG` is off:
   - `SECURE_PROXY_SSL_HEADER`: HTTPS ends at the reverse proxy, which tells Django through `X-Forwarded-Proto: https`.
   - `SECURE_SSL_REDIRECT`: `http://` is redirected to `https://`.
@@ -55,7 +54,7 @@ if not SECRET_KEY:
     short because browsers *remember* it; a year-long value plus a broken certificate locks users out.
 - **Why DEBUG must be off in production:** error pages show code, local variables and settings to the
   visitor, and Django keeps every SQL query in memory, which looks like a memory leak under load.
-- **`manage.py check --deploy`** lists production-unsafe settings. The T-01 branch runs it in CI with
+- **`manage.py check --deploy`** lists production-unsafe settings. CI runs it with
   `--tag security --fail-level WARNING`, so any new security warning fails the build.
 - **Tests run with DEBUG off** (`root/settings_test.py`), so that file turns `SECURE_SSL_REDIRECT`
   off. Otherwise the plain-HTTP test client gets a 301 redirect on every request

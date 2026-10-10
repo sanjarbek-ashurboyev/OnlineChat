@@ -21,26 +21,25 @@ were already fixed on `main` before this journal started.
 | Secrets/`DEBUG`/hosts from env, deps added, 48 tests + CI (work you did before this journal) | **Done** | CI on GitHub; 48 tests pass locally | `main` `763c9da`…`d00f461` (PR #5) |
 | Audit, load test tooling, scaling plan | **Done** | Load test ran: 100 online healthy, 200 failed | `main` `5dabc8b` |
 | Learning journal + `CLAUDE.md` | **Done**, kept up to date every task | Links checked | `main` `dff074f` and later |
-| T-01 Production HTTPS settings, forged-token tests, `check --deploy` in CI | **In review:** [PR #6](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/6), CI green | 50/50 tests locally and in CI; CI security check "no issues (2 silenced)"; fails locally with a weak key | `t-01-settings-from-env` `9d3ef86` |
-| T-08 Complete pinned deps, `pip-audit` in CI | **In review:** [PR #7](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/7), CI green | Fresh Python 3.13 venv and CI: 48/48 tests, `pip-audit` clean, Ruff clean | `t-08-pinned-deps` `ec6f48e` |
+| T-01 Production HTTPS settings, forged-token tests, `check --deploy` in CI | **Done**, merged as [PR #6](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/6) | 50/50 tests locally and in CI; CI security check "no issues (2 silenced)"; fails locally with a weak key | `main` `3c679a2` |
+| T-08 Complete pinned deps, `pip-audit` in CI | **Done**, merged as [PR #7](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/7) | Fresh Python 3.13 venv and CI: 48/48 tests, `pip-audit` clean, Ruff clean | `main` `9b6b0fb`; CI green on the merged `main` |
 | T-11 Tests + CI | **Partial** (mostly done in PR #5) | 48 tests, CI | Still to do: refresh-token test, Postgres/Redis in CI, gitleaks |
 | T-02, T-03, T-04 | Planned | | |
 | T-09 Gap fetch + reconnect jitter | Planned | | |
 | Baseline load test (realistic profile, second machine) | Planned | | |
 
-**Merge order:** T-01 and T-08 both edit `.github/workflows/tests.yml`, at different steps. Merge
-one PR, then update the other branch from `main` before merging it.
+Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), and 50/50 tests pass locally.
 
 ## Verified so far
 
 | What | How | Result |
 |---|---|---|
-| Test suite | `make test` (`manage.py test --settings=root.settings_test`) | 48 on `main`, 50 on the T-01 branch, all pass |
+| Test suite | `make test` (`manage.py test --settings=root.settings_test`) | 50 on `main`, all pass |
 | Lint | `ruff check .` (version 0.16.10, as in CI) | Clean |
 | No model changes missing a migration | `makemigrations --check --dry-run --settings=root.settings_test` | No changes |
-| Tokens signed with another key are rejected | `SigningKeyTests` (T-01 branch) | Pass |
+| Tokens signed with another key are rejected | `SigningKeyTests` | Pass |
 | Production security settings | `check --deploy --tag security --fail-level WARNING` with production env | Passes; W005/W021 silenced deliberately |
-| Fresh install works | New Python 3.13 venv + `pip install -r requirements.txt` (T-08 branch) | Tests pass, psycopg 3 in use |
+| Fresh install works | New Python 3.13 venv + `pip install -r requirements.txt`; your `.venv` synced too | Tests pass, psycopg 3 in use |
 | No known vulnerable versions | `pip-audit -r requirements.txt` | None found (2026-10-10) |
 
 ## Known issues (open)
@@ -52,8 +51,8 @@ See the [audit](../scaling/01-audit.md) and its status update. The most importan
 - **COR-2:** a failed `group_discard` skips "mark offline" (T-02).
 - **COR-3:** a JSON array or a numeric `text` still crashes the consumer (T-04).
 - **PERF-1/2/3:** one DB thread per process, plus a new DB connection per call (Stage 1).
-- Your local `.venv` still has extra packages. After T-08 merges, run `pip install -r requirements.txt`
-  and uninstall `psycopg2-binary`, `django-filter` and `Markdown`.
+- Dependabot started scanning right after the merge. Expect update PRs, e.g. Django 6.1.2. Review each
+  one like any other change: CI green, then merge.
 - The branch `loadtest-and-scaling-docs` on GitHub is stale: its content is on `main` now, so it can be deleted.
 
 ## Documentation backlog

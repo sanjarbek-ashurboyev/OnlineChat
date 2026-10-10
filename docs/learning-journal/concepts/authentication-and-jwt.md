@@ -45,7 +45,7 @@ jwt.decode(token, 'wrong-secret', algorithms=['HS256'])    # raises InvalidSigna
 - **The signing key is `SECRET_KEY`**, because SimpleJWT's `SIGNING_KEY` defaults to it. That's why the
   committed key was critical: with it, anyone could sign `{"user_id": "1"}` themselves. See
   [session 003](../sessions/003-t01-settings-from-environment.md).
-- **Tests** in `accounts/tests.py` (T-01 branch) forge tokens with our key (accepted) and with another
+- **Tests** in `accounts/tests.py` (`SigningKeyTests`) forge tokens with our key (accepted) and with another
   key (rejected).
 
 ## 6. Alternatives

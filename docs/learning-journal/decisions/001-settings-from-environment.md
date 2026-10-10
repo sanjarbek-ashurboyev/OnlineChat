@@ -1,6 +1,6 @@
 # 001 · Settings and secrets come from environment variables
 
-- **Date:** 2026-10-10 · **Task:** T-01 · **Status:** Accepted · **Commit:** `763c9da` on `main`, plus `9d3ef86` on branch `t-01-settings-from-env`
+- **Date:** 2026-10-10 · **Task:** T-01 · **Status:** Accepted · **Commit:** `763c9da` on `main`, plus `9d3ef86`, merged in PR #6
 
 > **Update 2026-10-10:** GitHub's `main` already had its own version of this (`763c9da`). It uses
 > `DJANGO_DEBUG=True/False` and a dev-only fallback key when DEBUG is on. We kept that version and

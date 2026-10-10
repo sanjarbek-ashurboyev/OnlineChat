@@ -23,11 +23,11 @@ below may be off by a few lines. Current status of the findings that changed:
 
 | Finding | Status | Where |
 |---|---|---|
-| SEC-1 committed `SECRET_KEY` | **Fixed in code:** read from env; the old key is burned. The forged-token tests are on branch `t-01-settings-from-env`. | `763c9da`, T-01 branch |
-| SEC-2 production settings | **Partly fixed:** `DEBUG`/`ALLOWED_HOSTS` from env. The HTTPS settings and the CI `check --deploy` are on the T-01 branch. | `763c9da`, T-01 branch |
+| SEC-1 committed `SECRET_KEY` | **Fixed:** read from env; the old key is burned; forged-token tests. | `763c9da`, PR #6 |
+| SEC-2 production settings | **Fixed:** `DEBUG`/`ALLOWED_HOSTS` from env, production HTTPS settings, `check --deploy` in CI. | `763c9da`, PR #6 |
 | SEC-5 message size | **Size fixed** (`MAX_MESSAGE_LENGTH = 4000` in REST and WS). The rate limit is **still open**. | `902e2b8` |
 | SEC-6 avatars | **User files removed from git**, `media/` ignored. No size limit and local disk: **still open**. | `763c9da` |
-| SEC-10 / OPS-3 dependencies | **Partly fixed:** channels/daphne/redis added, simplejwt pinned. The full pins, psycopg 3 and `pip-audit` are on branch `t-08-pinned-deps`. | `763c9da`, `6267925`, T-08 branch |
+| SEC-10 / OPS-3 dependencies | **Fixed:** complete pins from `requirements.in`, psycopg 3, `pip-audit` in CI, Dependabot. | `763c9da`, `6267925`, PR #7 |
 | OPS-1 / OPS-2 tests and CI | **Mostly fixed:** 48 tests (REST + WebSocket), CI with Ruff, tests and `makemigrations --check`. See T-11 for what's left. | `902e2b8` |
 | OPS-7 config split | **Fixed.** | `763c9da` |
 

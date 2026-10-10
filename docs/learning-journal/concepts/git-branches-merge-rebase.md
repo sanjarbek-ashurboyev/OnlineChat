@@ -40,6 +40,7 @@ git push --force-with-lease origin t-01-settings-from-env
   - `loadtest-and-scaling-docs`: its commits were rebased onto GitHub's `main`; the branch is stale now.
   - `t-01-settings-from-env`: rebuilt from the current `main` (`9d3ef86`) and pushed with `--force-with-lease`.
   - `t-08-pinned-deps`: rebuilt from the current `main` (`ec6f48e`).
+  - Both were merged as PRs #6 and #7.
 - **The big lesson ([P-09](../problems-and-solutions.md#p-09--local-main-was-five-commits-behind-github)):**
   the local `main` was 5 commits behind GitHub for this whole time. Always `git fetch` before starting.
 - **Convention:** one branch per task, named `t-NN-short-name`

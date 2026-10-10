@@ -53,7 +53,8 @@
 **Afterwards:** opened [PR #6](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/6) (T-01) and
 [PR #7](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/7) (T-08). CI passed on both, and the
 logs confirm the new steps ran: 50 tests and "no issues (2 silenced)" on #6, `pip-audit` on #7.
-**Not done:** merging them.
+Both were merged the same day. CI passed on the merged `main` (`9b6b0fb`), and your `.venv` was
+synced to the new pins (50/50 tests pass in it).
 
 ## Concepts I learned
 - **`git fetch`, ahead/behind, and why your local view can be stale:** [git guide](../concepts/git-branches-merge-rebase.md)
@@ -160,8 +161,6 @@ new production block. One line turns off the single setting that breaks the test
 </details>
 
 ## Next steps
-- Review and merge PR #6 and PR #7. Merge one, update the other from `main`, then merge it.
 - Delete the stale `loadtest-and-scaling-docs` branch on GitHub.
-- After T-08 merges, sync your `.venv`.
 - Next task: finish T-11 (refresh-token test, Postgres/Redis in CI), then T-02/T-03/T-04.
 - Review beforehand: the git guide's section 7.

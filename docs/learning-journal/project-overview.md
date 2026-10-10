@@ -1,6 +1,6 @@
 # Project overview
 
-*Last checked against the code: 2026-10-10, `main` `05ec1f9`. Branch-only changes are marked as such.*
+*Last checked against the code: 2026-10-10, `main` `9b6b0fb` (after PRs #6 and #7).*
 
 ## What OnlineChat is
 
@@ -62,20 +62,20 @@ and [concepts/django-channels-and-redis.md](concepts/django-channels-and-redis.m
 | Daphne | 4.2.3 | The ASGI server that holds HTTP and WebSocket connections |
 | channels-redis | 4.3.0 | Lets consumers in different processes message each other through Redis |
 | redis (redis-py) | 7.4.1 | Direct Redis access for presence; Django's cache backend |
-| psycopg 3 | 3.3.6 | Postgres driver (`main` still lists psycopg2; T-08 switches) |
+| psycopg 3 | 3.3.6 | Postgres driver |
 | drf-spectacular | 0.30.0 | OpenAPI schema and Swagger UI at `/api/schema/swagger-ui/` |
 | django-phonenumber-field | 8.5.0 | Validates and stores phone numbers |
 | Pillow | 12.3.0 | Image handling for avatars |
 | python-dotenv | 1.2.3 | Loads `.env` into environment variables |
 
-Versions come from `requirements.txt` on the `t-08-pinned-deps` branch, compiled for Python 3.13.
+Versions come from `requirements.txt`, compiled from `requirements.in` for Python 3.13.
 
 ## Components
 
 ### `root/`: project wiring
 - `settings.py`: configuration. The secret key, `DEBUG` (`DJANGO_DEBUG=True/False`) and hosts come
-  from the environment ([decision 001](decisions/001-settings-from-environment.md)). The T-01 branch
-  adds the production HTTPS settings.
+  from the environment ([decision 001](decisions/001-settings-from-environment.md)). With DEBUG off,
+  the production HTTPS settings switch on.
 - `settings_test.py`: settings for the test suite. SQLite in memory, an in-memory channel layer,
   local-memory cache and fast password hashing, so tests need no Postgres or Redis.
 - `urls.py`: HTTP routes. Serves `/media/` only when `DEBUG` is on.
@@ -122,12 +122,12 @@ A single page in plain JavaScript (no framework):
 
 ### Tests, lint and CI
 - `accounts/tests.py`, `chats/tests.py` (REST) and `chats/test_consumers.py` (WebSocket, through
-  the full ASGI stack with `WebsocketCommunicator`) hold 48 tests.
+  the full ASGI stack with `WebsocketCommunicator`) hold 50 tests.
 - `test_helpers.py` has shared builders (`make_user`, `token_for`) and `FakePresenceMixin`,
   which swaps Redis presence for a dict.
 - Run them with `make test`. Lint with `ruff check .` (rules in `ruff.toml`).
-- `.github/workflows/tests.yml` runs Ruff, the tests and `makemigrations --check` on every push
-  to `main` and on every PR.
+- `.github/workflows/tests.yml` runs Ruff, `pip-audit`, the tests, `makemigrations --check` and
+  `check --deploy --tag security` on every push to `main` and on every PR. Dependabot opens update PRs.
 - `README.md` has setup instructions for new developers.
 
 ## API endpoints
@@ -173,6 +173,6 @@ consumer removes its channel from the set. If a server crashes, the expiry clean
 ## Current state
 
 - Works locally. CI runs on GitHub. **No production deployment yet.**
-- **Tests:** 48 on `main`, all passing. The T-01 branch adds 2 more.
+- **Tests:** 50 on `main`, all passing. CI also runs Ruff, `pip-audit` and the Django security check.
 - **Audit:** [docs/scaling/01-audit.md](../scaling/01-audit.md) lists every known issue.
   The fixes are tracked in [progress.md](progress.md).
