@@ -1,0 +1,17 @@
+# Direct dependencies. After editing, regenerate the pinned file with Python 3.13
+# (the version CI uses):
+#   pip-compile --strip-extras requirements.in
+# Then install with: pip install -r requirements.txt
+
+Django~=6.1.0
+daphne              # ASGI server; listed in INSTALLED_APPS
+channels
+channels-redis      # CHANNEL_LAYERS backend
+redis               # Django cache backend and chats/presence.py
+psycopg[binary,pool]
+djangorestframework
+djangorestframework-simplejwt
+drf-spectacular
+django-phonenumber-field[phonenumberslite]
+pillow              # User.avatar ImageField
+python-dotenv

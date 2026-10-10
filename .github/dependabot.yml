@@ -1,0 +1,19 @@
+version: 2
+updates:
+  # Opens PRs that bump pins in requirements.txt. Update requirements.in too
+  # if a bump crosses a range it sets (e.g. Django~=6.1.0).
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: pip
+    directory: /loadtest
+    schedule:
+      interval: monthly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

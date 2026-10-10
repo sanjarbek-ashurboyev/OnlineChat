@@ -25,6 +25,8 @@ jobs:
           python-version: "3.13"
           cache: pip
       - run: pip install -r requirements.txt
+      - name: No known vulnerabilities in pinned dependencies
+        run: pip install pip-audit==2.10.1 && pip-audit -r requirements.txt
       # SQLite, an in-memory channel layer and a fake presence store: no PostgreSQL or Redis needed.
       - run: python manage.py test --settings=root.settings_test --verbosity 2
       - name: Migrations are up to date
