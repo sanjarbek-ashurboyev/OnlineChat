@@ -102,7 +102,7 @@ python-dotenv==1.2.4
     # via -r requirements.in
 pyyaml==6.0.3
     # via drf-spectacular
-redis==7.4.1
+redis==8.1.0
     # via
     #   -r requirements.in
     #   channels-redis
