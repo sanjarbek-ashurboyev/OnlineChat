@@ -1,6 +1,6 @@
 # Progress
 
-*Updated: 2026-10-10 (session 008).*
+*Updated: 2026-10-10 (session 008, plus GOTCHA.md).*
 
 **Status words:** **Done** = code written, tests or checks run and passing, committed.
 **Partial** = some of the acceptance criteria are met. **Blocked** = waiting on something outside
@@ -23,9 +23,9 @@ were already fixed on `main` before this journal started.
 | Learning journal + `CLAUDE.md` | **Done**, kept up to date every task | Links checked | `main` `dff074f` and later |
 | T-01 Production HTTPS settings, forged-token tests, `check --deploy` in CI | **Done**, merged as [PR #6](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/6) | 50/50 tests locally and in CI; CI security check "no issues (2 silenced)"; fails locally with a weak key | `main` `3c679a2` |
 | T-08 Complete pinned deps, `pip-audit` in CI | **Done**, merged as [PR #7](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/7) | Fresh Python 3.13 venv and CI: 48/48 tests, `pip-audit` clean, Ruff clean | `main` `9b6b0fb`; CI green on the merged `main` |
-| T-11 Tests + CI | **Done in [PR #14](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/14)**, waiting for you to merge | 53 tests; all 4 CI jobs green (lint, test, test-postgres-redis, secrets) | `t-11-tests-and-ci` |
+| T-11 Tests + CI | **Done**, merged as [PR #14](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/14) | 53 tests; all 4 CI jobs green (lint, test, test-postgres-redis, secrets) | `t-11-tests-and-ci` |
 | Branch protection (`protect-main` ruleset) | **Done** (by you) | Read back through the API: active on `main`, PR plus 4 checks plus up-to-date required | GitHub settings |
-| T-02 Disconnect always marks offline (COR-2) | **Done in a PR**, waiting for you to merge | Regression test fails before and passes after; 54/54 tests. Load-test acceptance not run yet | `t-02-disconnect-marks-offline` |
+| T-02 Disconnect always marks offline (COR-2) | **Done**, merged as [PR #15](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/15) | Regression test fails before and passes after; 54/54 tests; all 4 CI jobs. Load-test acceptance not run yet | `main` `6c6e16d` |
 | T-03, T-04 | Planned | | |
 | T-09 Gap fetch + reconnect jitter | Planned | | |
 | Baseline load test (realistic profile, second machine) | Planned | | |
@@ -54,11 +54,8 @@ See the [audit](../scaling/01-audit.md) and its status update. The most importan
 - **COR-1:** messages that arrive during a reconnect never show in the open chat (T-09).
 - **COR-3:** a JSON array or a numeric `text` still crashes the consumer (T-04).
 - **PERF-1/2/3:** one DB thread per process, plus a new DB connection per call (Stage 1).
-- **Dependabot PRs #8–#13** can't merge until #14 is merged: they lack the two new required checks.
-  After #14 merges, take them one at a time: comment `@dependabot rebase`, wait for 4 green checks, merge.
-  Order: #8, #9 (Actions), #10 (Django 6.1.2 etc.), #11 (redis 7 → 8, a major version), #12 (aiohttp).
-  **Close #13**: it duplicates #12 (fixed in the Dependabot config in #14).
-- The branch `loadtest-and-scaling-docs` on GitHub is stale: its content is on `main` now, so it can be deleted.
+- Dependabot backlog cleared: #8–#11 merged; #12 and #13 replaced by #16 ([P-14](problems-and-solutions.md#p-14--dependabot-prs-that-could-never-be-merged)).
+  Auto-merge is on: for new Dependabot PRs, comment `@dependabot rebase`, then enable auto-merge.
 
 ## Documentation backlog
 
