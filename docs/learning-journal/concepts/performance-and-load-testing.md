@@ -37,8 +37,13 @@ than they drain. Waiting time grows roughly like `busy / (1 - busy)`: 0.4/0.6 â‰
   to `loadtest/tokens.json` (gitignored, because the tokens are live).
 - `loadtest/run.py` uses `aiohttp` to simulate browsers exactly like `app.js`. It reports message,
   ping and chat-list p50/p95/p99 per step, and marks a step failed if p95 or the error rate passes a limit.
-- **Measured result:** 100 online users healthy, 200 failing, on one process with a heavy profile,
-  with the client on the same Mac.
+- **First result (session 001):** 100 online users healthy, 200 failing, on one process with a heavy
+  profile, with the client on the same Mac.
+- **Baseline (session 014), realistic profile, one Daphne process, `DEBUG=False`:**
+  - From a second Mac over an iPhone hotspot: healthy at 200, failed at 300. **The network caused that**,
+    not the server (see the "confounders" mistake below).
+  - From the same Mac: healthy up to **750**, and a cliff at **1,000** (message p95 6.4 s), while the chat
+    list (REST) stayed at 39 ms and Daphne used only ~55% of one core. That's the PERF-1 single-thread queue.
 - **Mechanism** ([audit PERF-1â€¦4](../../scaling/01-audit.md#15-confirmed-findings-performance)):
   1. `database_sync_to_async` sends all of a process's ORM calls to **one thread**.
   2. `CONN_MAX_AGE=0` means a new Postgres connection for every call.
@@ -62,6 +67,11 @@ than they drain. Waiting time grows roughly like `busy / (1 - busy)`: 0.4/0.6 â‰
 - **Reporting averages.** An average of 100 ms can hide 5% of users waiting 3 s. Use p95/p99.
 - **Testing an unrealistic workload.** Our first profile had about 6Ã— more messages per user than
   a realistic one. The plan's first task is to re-measure with a realistic profile.
+- **Not checking the path between the machines.** Over an iPhone hotspot, even the lightest frame (a ping) had a
+  p95 of 366 ms at 100 users. Before blaming the server, compare with a run that has no network in between, or
+  measure the network itself (`ping -c 100 <server>` from the generator).
+- **Blaming one cause when two could explain the result (a confounder).** Find the experiment that separates them.
+  Here: the same 300-user step from the server machine itself took 90 ms instead of 616 ms.
 - **Optimising before measuring**, or fixing several things at once so you can't tell which helped.
 
 ## 8. When to use it

@@ -31,6 +31,7 @@ It follows the real repository: file names, commands and results are the actual 
 11. [011 · T-09: fetch what the socket missed, reconnect with jitter, close codes the browser can see](sessions/011-t09-gap-fetch-and-jitter.md)
 12. [012 · Hotfix: quiet WebSockets crashed after 5 seconds (redis-py 8)](sessions/012-redis-socket-timeout.md)
 13. [013 · Fix: leftover presence entries no longer lock users out](sessions/013-presence-leak.md)
+14. [014 · Baseline load test: realistic profile, second machine, and what actually limited it](sessions/014-baseline-load-test.md)
 
 ## How to use it to learn
 

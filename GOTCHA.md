@@ -84,6 +84,8 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
   with its own last ping. → [P-18](docs/learning-journal/problems-and-solutions.md#p-18--leftover-presence-entries-lived-as-long-as-any-other-tab)
 - **A fake must behave like the real thing, and something must test the real thing.** `FakeRedis` choked on Redis's
   `(` exclusive-range syntax, and no test ran presence against real Redis until session 013.
+- **A load test also measures the network.** Over an iPhone hotspot, ping p95 was 366 ms at 100 users, and the "server"
+  failed at 300. From the server machine itself it passed with 90 ms. Compare before blaming the server. → [P-19](docs/learning-journal/problems-and-solutions.md#p-19--the-second-machine-baseline-measured-the-hotspot-not-the-server)
 - **"Too many connections" can be a client-side pool limit.** redis-py's pool allows 100 per process and raises
   instead of waiting. Read the library before tuning the server.
 - **Port 5432 on this Mac belongs to a Homebrew Postgres 14**, not the Docker one, and it's too old for Django 6.1.
