@@ -21,8 +21,8 @@ were already fixed on `main` before this journal started.
 | Secrets/`DEBUG`/hosts from env, deps added, 48 tests + CI (work you did before this journal) | **Done** | CI on GitHub; 48 tests pass locally | `main` `763c9da`…`d00f461` (PR #5) |
 | Audit, load test tooling, scaling plan | **Done** | Load test ran: 100 online healthy, 200 failed | `main` `5dabc8b` |
 | Learning journal + `CLAUDE.md` | **Done**, kept up to date every task | Links checked | `main` `dff074f` and later |
-| T-01 Production HTTPS settings, forged-token tests, `check --deploy` in CI | **Done on branch**, PR not opened yet | 50/50 tests; deploy check passes with a strong key and fails with a weak one | `t-01-settings-from-env` `9d3ef86` (pushed) |
-| T-08 Complete pinned deps, `pip-audit` in CI | **Done on branch**, PR not opened yet | Fresh Python 3.13 venv: 48/48 tests, `pip-audit` clean, Ruff clean | `t-08-pinned-deps` `ec6f48e` (pushed) |
+| T-01 Production HTTPS settings, forged-token tests, `check --deploy` in CI | **In review:** [PR #6](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/6), CI green | 50/50 tests locally and in CI; CI security check "no issues (2 silenced)"; fails locally with a weak key | `t-01-settings-from-env` `9d3ef86` |
+| T-08 Complete pinned deps, `pip-audit` in CI | **In review:** [PR #7](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/7), CI green | Fresh Python 3.13 venv and CI: 48/48 tests, `pip-audit` clean, Ruff clean | `t-08-pinned-deps` `ec6f48e` |
 | T-11 Tests + CI | **Partial** (mostly done in PR #5) | 48 tests, CI | Still to do: refresh-token test, Postgres/Redis in CI, gitleaks |
 | T-02, T-03, T-04 | Planned | | |
 | T-09 Gap fetch + reconnect jitter | Planned | | |

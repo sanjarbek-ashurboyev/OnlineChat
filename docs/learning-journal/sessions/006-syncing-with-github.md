@@ -50,7 +50,10 @@
 | T-08 fresh Python 3.13 venv | 48/48 OK, psycopg 3, no missing migrations, `pip-audit` clean |
 | `ruff check .` on all three | Clean |
 
-**Not done:** the PRs for T-01 and T-08 aren't opened yet, and CI hasn't run on GitHub yet; only locally.
+**Afterwards:** opened [PR #6](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/6) (T-01) and
+[PR #7](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/7) (T-08). CI passed on both, and the
+logs confirm the new steps ran: 50 tests and "no issues (2 silenced)" on #6, `pip-audit` on #7.
+**Not done:** merging them.
 
 ## Concepts I learned
 - **`git fetch`, ahead/behind, and why your local view can be stale:** [git guide](../concepts/git-branches-merge-rebase.md)
@@ -157,8 +160,7 @@ new production block. One line turns off the single setting that breaks the test
 </details>
 
 ## Next steps
-- Open PRs for `t-01-settings-from-env` and `t-08-pinned-deps`, and watch CI run on GitHub.
-  Merge one, update the other from `main`, then merge it.
+- Review and merge PR #6 and PR #7. Merge one, update the other from `main`, then merge it.
 - Delete the stale `loadtest-and-scaling-docs` branch on GitHub.
 - After T-08 merges, sync your `.venv`.
 - Next task: finish T-11 (refresh-token test, Postgres/Redis in CI), then T-02/T-03/T-04.
