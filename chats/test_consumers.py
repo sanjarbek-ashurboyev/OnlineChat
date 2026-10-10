@@ -2,7 +2,7 @@
 middleware, URL router and consumer, as a browser would reach it."""
 from channels.db import database_sync_to_async
 from channels.testing import WebsocketCommunicator
-from django.test import TestCase
+from django.test import TransactionTestCase
 
 from chats.consumers import CLOSE_UNAUTHENTICATED
 from chats.models import MAX_MESSAGE_LENGTH, Block, Chat, Message
@@ -12,7 +12,10 @@ from test_helpers import FakePresenceMixin, client_for, make_user, token_for
 ALLOWED_ORIGIN = [(b'origin', b'http://localhost')]
 
 
-class InboxSocketTestCase(FakePresenceMixin, TestCase):
+# TransactionTestCase, not TestCase: database_sync_to_async closes any connection
+# whose autocommit is off, and TestCase's per-test transaction turns it off. On
+# PostgreSQL that kills the test's own connection; in-memory SQLite ignores close().
+class InboxSocketTestCase(FakePresenceMixin, TransactionTestCase):
     def setUp(self):
         super().setUp()
         self.alice, self.bob, self.carol = make_user(1), make_user(2), make_user(3)
