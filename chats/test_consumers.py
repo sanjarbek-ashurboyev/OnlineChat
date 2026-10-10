@@ -1,8 +1,12 @@
 """The inbox WebSocket, driven through the full ASGI stack: origin check, JWT
 middleware, URL router and consumer, as a browser would reach it."""
+from unittest import mock
+
 from channels.db import database_sync_to_async
+from channels.layers import get_channel_layer
 from channels.testing import WebsocketCommunicator
 from django.test import TransactionTestCase
+from redis.exceptions import MaxConnectionsError
 
 from chats.consumers import CLOSE_UNAUTHENTICATED
 from chats.models import MAX_MESSAGE_LENGTH, Block, Chat, Message
@@ -77,6 +81,22 @@ class ConnectionTests(InboxSocketTestCase):
         self.assertTrue(self.online(self.alice))
         await self.close_all()
         self.assertFalse(self.online(self.alice))
+
+    async def test_a_failed_group_discard_still_marks_the_user_offline(self):
+        # COR-2: under a burst of disconnects the channel layer ran out of Redis
+        # connections, and the user stayed "online" because mark_offline never ran.
+        await self.open(self.alice)
+        layer = get_channel_layer()
+        failing = mock.AsyncMock(side_effect=MaxConnectionsError('Too many connections'))
+
+        with mock.patch.object(layer, 'group_discard', failing), \
+                self.assertLogs('chats.consumers', 'ERROR'):
+            await self.close_all()
+
+        failing.assert_awaited_once()
+        self.assertFalse(self.online(self.alice))
+        await self.alice.arefresh_from_db()
+        self.assertIsNotNone(self.alice.last_seen)
 
 
 class MessagingTests(InboxSocketTestCase):

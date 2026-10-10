@@ -31,7 +31,9 @@ below may be off by a few lines. Current status of the findings that changed:
 | OPS-1 / OPS-2 tests and CI | **Mostly fixed:** 48 tests (REST + WebSocket), CI with Ruff, tests and `makemigrations --check`. See T-11 for what's left. | `902e2b8` |
 | OPS-7 config split | **Fixed.** | `763c9da` |
 
-Still open, re-checked against the current code: SEC-3, SEC-4, SEC-7, SEC-8, SEC-9, every COR
+| COR-2 failed `group_discard` skips mark offline | **Fixed:** the failure is logged and the user is still marked offline. Root cause recorded (redis-py pool, `max_connections=100`, raises instead of waiting). | PR for T-02 |
+
+Still open, re-checked against the current code: SEC-3, SEC-4, SEC-7, SEC-8, SEC-9, every other COR
 finding (COR-3: the existing test covers bad JSON and unknown actions, but not a JSON array or a
 numeric `text`), and every PERF finding.
 

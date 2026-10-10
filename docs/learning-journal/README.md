@@ -24,6 +24,7 @@ It follows the real repository: file names, commands and results are the actual 
 5. [005 · Setting up this learning journal](sessions/005-learning-journal-setup.md)
 6. [006 · Syncing with GitHub, and redoing T-01 and T-08](sessions/006-syncing-with-github.md)
 7. [007 · T-11: tests and CI against real services, secret scanning, branch protection](sessions/007-t11-tests-and-ci.md)
+8. [008 · T-02: a socket that closes always marks the user offline](sessions/008-t02-disconnect-marks-offline.md)
 
 ## How to use it to learn
 
