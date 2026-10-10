@@ -1,4 +1,5 @@
 import json
+import logging
 
 from asgiref.sync import async_to_sync, sync_to_async
 from channels.db import database_sync_to_async
@@ -10,6 +11,8 @@ from django.utils import timezone
 from accounts.models import User
 from chats import presence
 from chats.models import MAX_MESSAGE_LENGTH, Block, Chat, Message
+
+logger = logging.getLogger(__name__)
 
 CLOSE_UNAUTHENTICATED = 4401
 
@@ -67,7 +70,13 @@ class InboxConsumer(AsyncWebsocketConsumer):
 
     async def disconnect(self, code):
         if hasattr(self, 'group'):
-            await self.channel_layer.group_discard(self.group, self.channel_name)
+            try:
+                await self.channel_layer.group_discard(self.group, self.channel_name)
+            except Exception:
+                # Don't let a channel layer failure (e.g. MaxConnectionsError under a
+                # burst of disconnects) skip marking the user offline below. The stale
+                # group entry expires on its own (channels_redis group_expiry).
+                logger.exception('inbox: group_discard failed for user %s', self.user.pk)
         if getattr(self, 'user', None) and self.user.is_authenticated:
             await sync_to_async(presence.mark_offline)(self.user.pk, self.channel_name)
             await self.touch_last_seen()

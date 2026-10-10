@@ -79,8 +79,11 @@ class EchoConsumer(AsyncWebsocketConsumer):
   it in `database_sync_to_async`.
 - **Treating the channel layer as reliable.** It's *at-most-once*: if nobody is listening, or the
   socket is reconnecting, the event is dropped. The database is the source of truth.
-- **Not cleaning up in `disconnect()`.** If `group_discard` raises, the next lines (mark offline)
-  never run (COR-2, task T-02).
+- **Fragile cleanup in `disconnect()`.** If `group_discard` raises, the next lines (mark offline) never
+  run. We hit this under load and fixed it in T-02: catch and log, then do the important step anyway
+  ([P-13](../problems-and-solutions.md#p-13--a-burst-of-disconnects-left-users-online-cor-2)).
+- **Assuming "too many connections" means the Redis server is full.** Here it was the client-side pool:
+  redis-py's `ConnectionPool` allows 100 connections per process by default, and raises instead of waiting.
 - **Forgetting `type` → method naming.** `'chat.message'` calls `chat_message`. A typo means the
   event is silently ignored, or raises an error.
 

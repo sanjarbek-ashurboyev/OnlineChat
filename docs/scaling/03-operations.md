@@ -64,6 +64,7 @@ says which test proves the mitigation works.
 - **Deploy/rollback:** config-only; rollback = previous config (but never the old key).
 
 **T-02 · `disconnect()` always marks offline** · H · 1 h · Next? no
+- **Status (2026-10-10): done** (branch `t-02-disconnect-marks-offline`). Root cause: channels-redis uses one redis-py `ConnectionPool` per process, with `max_connections=100` by default, and it raises `MaxConnectionsError` instead of waiting. Pool sizing (or a blocking pool) is left for Stage 1 with a load test. The load-test acceptance check is still to run.
 - **Problem:** COR-2 (measured 97 failures).
 - **Files:** `chats/consumers.py:68-73`.
 - **Steps:** wrap `group_discard` in `try/except Exception` + `logger.exception`, and

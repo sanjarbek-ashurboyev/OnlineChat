@@ -174,3 +174,34 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
 - **Lesson:** a test database that behaves differently from production can hide bugs, or hide broken tests.
   That's exactly why the Postgres/Redis job was added, and it paid off on its first run.
 
+## P-13 · A burst of disconnects left users "online" (COR-2)
+
+- **Session:** [008](sessions/008-t02-disconnect-marks-offline.md)
+- **Observed (load test, session 001):** when 200 clients disconnected together, 97 `disconnect()` calls raised
+  `redis.exceptions.MaxConnectionsError` at `group_discard`. The next lines, `mark_offline` and `touch_last_seen`,
+  never ran. Those users showed "online" for up to 90 s, and their dead channels stayed in the Redis group for
+  up to 24 h, receiving copies of every message.
+- **Expected:** closing a socket always marks the user offline, whatever else fails.
+- **Root cause, part 1 (Confirmed, code):** `disconnect()` ran the steps in sequence with no error handling,
+  so one failing step skipped the rest.
+- **Root cause, part 2 (Confirmed by reading the library source):**
+  - channels-redis keeps **one connection pool per event loop**, so one per process, shared by all sockets
+    (`RedisChannelLayer.connection()` → `RedisLoopLayer`).
+  - The pool is redis-py's `ConnectionPool`. It defaults to `max_connections=100`, and when all are in use
+    `get_available_connection()` **raises at once** instead of waiting. `BlockingConnectionPool` would wait,
+    but channels-redis doesn't use it.
+  - 200 simultaneous `group_discard` calls need about 200 connections, so everything past 100 failed. The
+    Redis *server* limit (`maxclients`, default 10,000) was never the problem.
+- **Fix:**
+  - `disconnect()` catches and logs a `group_discard` failure, then still marks the user offline.
+  - The stale group entry is harmless and expires by itself (`group_expiry`).
+  - Pool sizing is **not changed yet**: it's a capacity decision for Stage 1, to be measured with the load test.
+- **Verified:**
+  - A test (`test_a_failed_group_discard_still_marks_the_user_offline`) made `group_discard` raise
+    `MaxConnectionsError`. It failed before the fix and passes after.
+  - 54/54 tests pass.
+  - **Not verified yet:** the acceptance check "no presence leftovers after the load test's end-of-run
+    disconnects". That needs the local stack running (Docker), and is planned with the baseline load test.
+- **Lesson:** cleanup code must not depend on every step succeeding. Do the most important step (mark offline)
+  regardless, and log the rest. A "too many connections" error is often a *client-side pool* limit, not the server's.
+
