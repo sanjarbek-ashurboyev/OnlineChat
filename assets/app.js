@@ -394,7 +394,11 @@ function connectInbox() {
     `${scheme}://${location.host}/ws/inbox/?token=${encodeURIComponent(state.access)}`);
   state.ws = ws;
 
-  ws.onopen = () => {
+  // A refused socket (4401, 4429) is accepted and then closed, so onopen alone doesn't
+  // mean we're in. The first frame from the server does: ping on open to get one.
+  let ready = false;
+  const onReady = () => {
+    ready = true;
     const reconnected = state.retry > 0;
     state.retry = 0;
     setConn('is-open');
@@ -404,6 +408,10 @@ function connectInbox() {
       loadChats();
     }
     if (state.activeId) sendRead(state.activeId);
+  };
+
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ action: 'ping' }));
     state.pingTimer = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ action: 'ping' }));
     }, PING_MS);
@@ -411,6 +419,8 @@ function connectInbox() {
 
   ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
+    if (!ready) onReady();
+    if (data.type === 'pong') return;
 
     if (data.type === 'message') {
       if (data.chat_id === state.activeId) {
