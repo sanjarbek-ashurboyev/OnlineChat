@@ -28,10 +28,23 @@
    so `test_a_message_sent_over_rest_reaches_open_sockets` had silently moved into `RateLimitTests`. It still ran
    and passed, just in the wrong class. Moved it back, with the new reconnect test.
 
+6. **Browser check (2026-10-11, after Docker was started).** Ran the real stack (Docker Postgres, Redis, Django on
+   port 8001) and drove a Chrome page as "Tester A", with "Tester B" sending:
+   - A live message arrived through the socket. ✅
+   - I stopped the server, added 2 messages from Tester B directly in the database, then restarted. The client
+     reconnected and requested `?after=<last id>`. Both messages appeared in order, with no duplicates. ✅ (done twice)
+   - A probe socket received close code **4429** in the browser, not 1006. The COR-5 fix works in a real browser. ✅
+   - **It found a bug in my client code:** a refused socket is now accepted first, so `onopen` fired, reset the backoff
+     to 0 and ran a catch-up. A user at the socket cap retried about once a second, forever: **142 connects in about 2
+     minutes**. Fixed in a second commit: the client pings on open and treats the **first frame from the server** as
+     "connected". Re-checked with the cap full (5 fake presence entries for 40 s): 4 refused attempts with growing
+     waits and 0 catch-up requests, then 1 connection and exactly 1 catch-up once the entries expired. ✅
+   - **It also found a regression on `main`:** quiet sockets crashed after 5 s (redis-py 8). That's fixed separately in
+     PR #21, see session 012. The browser checks above ran with that fix applied locally.
+   - Small leftover: right after a reconnect, the open chat's sidebar row can show its unread badge for a moment. The
+     next sidebar reload clears it (the database already has the messages as read).
+
 **Not done:**
-- **The client wasn't run in a browser.** Docker isn't running on this Mac, so I couldn't start the stack. The JS
-  is checked for syntax only. Manual check to do: open a chat, stop the server for 10 s, send a message from the
-  other account over REST, restart, and watch it appear.
 - Load test of a restart with jitter (acceptance), planned with the baseline load test.
 
 ## Concepts I learned
@@ -141,6 +154,8 @@ reconnectLater();
 - **Gap fetch, not a durable queue:** Decision 0.3. Postgres already answers "what did I miss?" with one query.
 - **Reuse the pagination (50) instead of a separate limit of 200:** one code path. More than 50 missed messages
   is rare, and reloading the chat is then the simplest correct answer.
+- **"Connected" means the first frame from the server, not `onopen`.** Once refused sockets are accepted first,
+  `onopen` no longer proves anything. A ping on open guarantees a frame comes back on a socket that's really in.
 - **Refuse with accept-then-close for 4429 too,** not only 4401. Same bug, same fix. (Session 010 said browsers
   would see 1006 for 4429. That was true then; it isn't now.)
 - **Reload the sidebar on every reconnect:** the unread counts and previews were also stale. One extra request,
@@ -152,6 +167,7 @@ reconnectLater();
 - Every retry goes through a jittered backoff, including special cases.
 - In Channels, accept and then close, or the browser never sees your code.
 - When a fix makes dead code reachable (the 4401 branch), review that code as if it were new.
+- Run the real thing. The browser check found two bugs that 72 green tests didn't.
 
 ## Review questions
 1. Why can't the channel layer replay the messages a socket missed?
@@ -182,6 +198,5 @@ reconnectLater();
 
 ## Next steps
 - Review and merge the T-09 PR.
-- Manual browser check of the reconnect (above), once Docker is running.
 - Stage 0 code tasks in the suggested order are now done (T-01, T-08, T-11, T-02, T-03, T-04, T-09). What's left
   of Stage 0 is the **baseline load test** with the realistic profile, from a second machine.

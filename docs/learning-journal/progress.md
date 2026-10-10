@@ -28,7 +28,7 @@ were already fixed on `main` before this journal started.
 | T-02 Disconnect always marks offline (COR-2) | **Done**, merged as [PR #15](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/15) | Regression test fails before and passes after; 54/54 tests; all 4 CI jobs. Load-test acceptance not run yet | `main` `6c6e16d` |
 | T-03 Throttles for login, registration, refresh, profiles, new chats (SEC-3, SEC-4) | **Done**, merged as [PR #18](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/18) | Tests failed first, then 62/62 pass; all 4 CI jobs. `NUM_PROXIES` and the load-test acceptance not done yet | `main` `f16a18b` |
 | T-04 WebSocket input checks, frame limit per socket, 5 sockets per user (COR-3, SEC-5) | **Done**, merged as [PR #19](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/19) | COR-3 reproduced by a failing test, then 68/68 pass; all 4 CI jobs. DB `CHECK` and load-test acceptance not done | `main` `66060a7` |
-| T-09 Gap fetch, reconnect jitter, visible close codes (COR-1, COR-4, COR-5) | **Partial**, PR open | Tests failed first, then 72/72 pass; Ruff clean; `node --check` OK. **Client not yet run in a browser** (Docker down) | `t-09-gap-fetch-jitter` |
+| T-09 Gap fetch, reconnect jitter, visible close codes (COR-1, COR-4, COR-5) | **Done** locally, PR open | Tests failed first, then 72/72 pass; Ruff clean. Browser check: missed messages appear after a restart; 4429 visible; refused reconnects back off (bug found and fixed) | `t-09-gap-fetch-jitter` |
 | Baseline load test (realistic profile, second machine) | Planned | | |
 
 Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), and 50/50 tests pass locally.
@@ -50,7 +50,7 @@ Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), a
 ## Known issues (open)
 
 See the [audit](../scaling/01-audit.md) and its status update. The most important still-open items:
-- SEC-3/4/5 and COR-3 fixed (T-03, T-04, merged). COR-1/4/5 fixed on the T-09 branch; the browser side still needs a manual check.
+- SEC-3/4/5 and COR-3 fixed (T-03, T-04, merged). COR-1/4/5 fixed on the T-09 branch, checked in a browser. The redis-py 8 regression (quiet sockets crash) is fixed in PR #21.
 - **PERF-1/2/3:** one DB thread per process, plus a new DB connection per call (Stage 1).
 - Dependabot backlog cleared: #8–#11 merged; #12 and #13 replaced by #16 ([P-14](problems-and-solutions.md#p-14--dependabot-prs-that-could-never-be-merged)).
   Auto-merge is on: for new Dependabot PRs, comment `@dependabot rebase`, then enable auto-merge.

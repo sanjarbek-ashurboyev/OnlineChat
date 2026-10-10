@@ -126,7 +126,7 @@ says which test proves the mitigation works.
 - **Acceptance:** fresh venv + `pip install -r requirements.txt` + tests pass.
 
 **T-09 · Gap fetch + reconnect jitter** · C · 4–8 h · Next? yes (**foundation for all later deploys**)
-- **Status (2026-10-11): code done** on `t-09-gap-fetch-jitter` (session 011): `?after=<id>` (paginated, oldest first), full jitter, accept-then-close so browsers see 4401/4429 (COR-5 confirmed). Client not yet checked in a browser.
+- **Status (2026-10-11): code done** on `t-09-gap-fetch-jitter` (session 011): `?after=<id>` (paginated, oldest first), full jitter, accept-then-close so browsers see 4401/4429 (COR-5 confirmed). Checked in a browser (session 011).
 - See Decision 0.3.
 - **Files:** `chats/views.py` (`?after=`), `assets/app.js` (`onopen`, backoff).
 - **Tests:** reconnect test; COR-5 check.
