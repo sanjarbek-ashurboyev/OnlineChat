@@ -8,3 +8,7 @@ __pycache__/
 
 # User uploads
 media/
+
+# Load test output: holds live access tokens
+loadtest/tokens.json
+loadtest/results*.json
