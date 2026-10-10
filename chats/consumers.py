@@ -120,7 +120,7 @@ class InboxConsumer(AsyncWebsocketConsumer):
         action = payload.get('action', 'message')
 
         if action == 'ping':
-            await sync_to_async(presence.refresh)(self.user.pk)
+            await sync_to_async(presence.refresh)(self.user.pk, self.channel_name)
             await self.send(text_data=json.dumps({'type': 'pong'}))
             return
 

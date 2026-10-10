@@ -1,6 +1,6 @@
 # Progress
 
-*Updated: 2026-10-11 (session 011).*
+*Updated: 2026-10-11 (session 013).*
 
 **Status words:** **Done** = code written, tests or checks run and passing, committed.
 **Partial** = some of the acceptance criteria are met. **Blocked** = waiting on something outside
@@ -28,8 +28,9 @@ were already fixed on `main` before this journal started.
 | T-02 Disconnect always marks offline (COR-2) | **Done**, merged as [PR #15](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/15) | Regression test fails before and passes after; 54/54 tests; all 4 CI jobs. Load-test acceptance not run yet | `main` `6c6e16d` |
 | T-03 Throttles for login, registration, refresh, profiles, new chats (SEC-3, SEC-4) | **Done**, merged as [PR #18](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/18) | Tests failed first, then 62/62 pass; all 4 CI jobs. `NUM_PROXIES` and the load-test acceptance not done yet | `main` `f16a18b` |
 | T-04 WebSocket input checks, frame limit per socket, 5 sockets per user (COR-3, SEC-5) | **Done**, merged as [PR #19](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/19) | COR-3 reproduced by a failing test, then 68/68 pass; all 4 CI jobs. DB `CHECK` and load-test acceptance not done | `main` `66060a7` |
-| T-09 Gap fetch, reconnect jitter, visible close codes (COR-1, COR-4, COR-5) | **Done** locally, PR open | Tests failed first, then 72/72 pass; Ruff clean. Browser check: missed messages appear after a restart; 4429 visible; refused reconnects back off (bug found and fixed) | `t-09-gap-fetch-jitter` |
+| T-09 Gap fetch, reconnect jitter, visible close codes (COR-1, COR-4, COR-5) | **Done**, merged as [PR #20](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/20) | Tests failed first, then 73/73 pass; all 4 CI jobs. Browser check: missed messages appear after a restart; 4429 visible; refused reconnects back off | `main` `00f9789` |
 | Hotfix: quiet WebSockets crashed after 5 s (redis-py 8 default timeout) | **Done**, merged as [PR #21](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/21) | Reproduced 3/3; new test failed first, passes now; full suite on real Postgres + Redis: 69 OK; all 4 CI jobs | `main` `f69fbe7` |
+| Fix: leftover presence entries locked users out (one TTL per user, renewed by any tab) | **Done** locally, PR open | Tests failed first; 80/80 on real Postgres + Redis (incl. a real-Redis presence test); real-stack check: dead entry pruned on connect | `fix-presence-leak` |
 | Baseline load test (realistic profile, second machine) | Planned | | |
 
 Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), and 50/50 tests pass locally.
@@ -38,7 +39,7 @@ Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), a
 
 | What | How | Result |
 |---|---|---|
-| Test suite | `make test` (`manage.py test --settings=root.settings_test`) | 73 on the T-09 branch (with main merged), all pass; 1 skipped on SQLite (needs real Redis) |
+| Test suite | `make test` (`manage.py test --settings=root.settings_test`) | 80 on `fix-presence-leak`, all pass on real Postgres + Redis; 2 skipped on SQLite (need real Redis) |
 | Test suite on real services | CI job `test-postgres-redis` (Postgres 17, Redis 7, normal settings) | 53 pass (T-11 branch) |
 | No secrets in history | CI job `secrets` (gitleaks 8.30.1, custom `django-secret-key` rule) | Clean; a planted key is caught |
 | Lint | `ruff check .` (version 0.16.10, as in CI) | Clean |

@@ -279,3 +279,21 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
 - **Not fixed here:** a consumer that crashes still leaks its presence entry until the 90 s TTL expires.
 - **Lesson:** a dependency's *default* can change in a major version, even when your code doesn't. Read the
   changelog of a major bump, and test long-lived connections *idle*, not only busy.
+
+## P-18 · Leftover presence entries lived as long as any other tab
+
+- **Session:** [013](sessions/013-presence-leak.md)
+- **Observed:** in session 011's browser check, leftover presence entries from crashed consumers kept counting
+  toward the 5-socket cap, and the user was locked out (4429) until they expired. Session 012 noted it as a follow-up.
+- **Root cause (Confirmed, by tests):** presence was one Redis **set** per user with **one TTL for the whole set**,
+  and every ping renewed that TTL (`presence.refresh(user_id)`). A socket that dies without `disconnect()` running
+  (consumer crash, killed process, every deploy) leaves its entry behind. As long as *any* other tab pinged, the
+  set never expired, so the leftover counted toward the cap, and toward "online", indefinitely. The old design's
+  comment ("a crashed worker's leftovers expire") was only true when the user had no other tab open.
+- **Fix:** a sorted set (`online:<id>`) scoring each socket with its own last-ping time. Counts include only
+  entries under 90 s old, and `socket_count` also deletes older ones. `refresh()` now takes the channel name and
+  renews only that socket. New key name, because the new commands fail on the old plain-set keys (`WRONGTYPE`).
+- **Tests:** 5 unit tests with a frozen clock, a consumer test (5 dead entries plus a pinging tab must not
+  block a new socket), and one test against real Redis. They failed first: `refresh()` couldn't target one
+  socket, and a user whose only socket died stayed online.
+- **Lesson:** one expiry for a whole group, renewed by any member, means a dead member never expires.
