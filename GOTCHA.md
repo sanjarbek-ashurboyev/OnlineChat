@@ -19,6 +19,8 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
   Two PRs that each pass alone haven't been tested *together* (PRs #6/#7).
 - **A required check that's new in `main` never runs on an old PR.** Update the PR's branch so it does.
 - **"No checks reported" right after an update usually means "still running".** `test-postgres-redis` takes about 1.5 min.
+- **With auto-merge on, check the PR is still open before pushing to it** (`gh pr view N --json state`).
+  A commit pushed after the merge sits on a dead branch, and its green checks mean nothing. → [P-15](docs/learning-journal/problems-and-solutions.md#p-15--a-commit-pushed-to-a-pr-after-auto-merge-never-reached-main)
 - **When PRs depend on each other, stack them** (branch from the earlier PR's branch) instead of
   duplicating changes. Merge them in order.
 

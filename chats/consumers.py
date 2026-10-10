@@ -11,10 +11,16 @@ from django.utils import timezone
 from accounts.models import User
 from chats import presence
 from chats.models import MAX_MESSAGE_LENGTH, Block, Chat, Message
+from chats.ratelimit import TokenBucket
 
 logger = logging.getLogger(__name__)
 
 CLOSE_UNAUTHENTICATED = 4401
+CLOSE_TOO_MANY_SOCKETS = 4429
+
+# SEC-5. Per socket: 10 frames at once, then 1 per second. Per user: 5 sockets (tabs).
+FRAMES_PER_SECOND, FRAME_BURST = 1, 10
+MAX_SOCKETS_PER_USER = 5
 
 
 def group_for_user(user_id):
@@ -60,7 +66,12 @@ class InboxConsumer(AsyncWebsocketConsumer):
         if not self.user.is_authenticated:
             await self.close(code=CLOSE_UNAUTHENTICATED)
             return
+        # A soft cap: two sockets connecting at the same moment can both get in.
+        if await sync_to_async(presence.socket_count)(self.user.pk) >= MAX_SOCKETS_PER_USER:
+            await self.close(code=CLOSE_TOO_MANY_SOCKETS)
+            return
 
+        self.bucket = TokenBucket(rate=FRAMES_PER_SECOND, burst=FRAME_BURST)
         self.group = group_for_user(self.user.pk)
         await self.channel_layer.group_add(self.group, self.channel_name)
         await self.accept()
@@ -82,10 +93,18 @@ class InboxConsumer(AsyncWebsocketConsumer):
             await self.touch_last_seen()
 
     async def receive(self, text_data=None, bytes_data=None):
+        # Every frame counts, pings included: each one writes last_seen to the database.
+        if not self.bucket.take():
+            await self.send_error('Slow down.')
+            return
+
         try:
             payload = json.loads(text_data or '')
         except json.JSONDecodeError:
             await self.send_error('Malformed JSON.')
+            return
+        if not isinstance(payload, dict):
+            await self.send_error('Expected a JSON object.')
             return
 
         await self.touch_last_seen()
@@ -110,7 +129,11 @@ class InboxConsumer(AsyncWebsocketConsumer):
             await self.notify_read(chat, marked)
             return
 
-        text = (payload.get('text') or '').strip()
+        text = payload.get('text') or ''
+        if not isinstance(text, str):
+            await self.send_error('text must be a string.', chat_id=chat.pk)
+            return
+        text = text.strip()
         if not text:
             await self.send_error('text must not be empty.', chat_id=chat.pk)
             return

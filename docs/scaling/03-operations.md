@@ -74,7 +74,7 @@ says which test proves the mitigation works.
 - **Acceptance:** the load test's end-of-run disconnects produce no presence leftovers.
 
 **T-03 · Throttles for auth, enumeration and chat creation** · C · 3–6 h · Next? yes
-- **Status (2026-10-10): step 1 done** on `t-03-throttles` (session 009): the rates below, plus a per-phone login throttle in `accounts/throttles.py`, 8 new tests. Step 2 (`NUM_PROXIES`) waits for a proxy; the load-test acceptance is not run yet.
+- **Status (2026-10-10): step 1 done**, merged in PR #18 (session 009): the rates below, plus a per-phone login throttle in `accounts/throttles.py`, 8 new tests. Step 2 (`NUM_PROXIES`) waits for a proxy; the load-test acceptance is not run yet.
 - **Problem:** SEC-3, SEC-4.
 - **Files:** `accounts/views.py`, `chats/views.py`, `root/settings.py`, new `accounts/throttles.py` (phone-keyed login throttle).
 - **Steps:**
@@ -85,6 +85,7 @@ says which test proves the mitigation works.
 - **Rollback:** raise rates via settings (no code change).
 
 **T-04 · WebSocket input validation, max length, per-socket rate limit** · C · 3–5 h · Next? yes
+- **Status (2026-10-10): done** on `t-04-ws-input-validation` (session 010): type checks, `TokenBucket(rate=1, burst=10)` per socket over every frame, 5 sockets per user (close 4429). Not done: the optional DB `CHECK`.
 - **Problem:** SEC-5, COR-3.
 - **Files:** `chats/consumers.py:75-118`, `chats/serializers.py` (`max_length` on `text`), `chats/models.py` (optional DB `CHECK (length(text) <= 4000)` via migration).
 - **Steps:**

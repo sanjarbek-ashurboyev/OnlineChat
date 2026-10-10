@@ -1,6 +1,6 @@
 # Rate limiting (throttling)
 
-*First used in [session 009](../sessions/009-t03-throttles.md) (T-03).*
+*First used in [session 009](../sessions/009-t03-throttles.md) (T-03). Token bucket: [session 010](../sessions/010-t04-websocket-input-and-rate-limits.md) (T-04).*
 
 ## 1. Simple definition
 
@@ -71,6 +71,28 @@ The DRF classes we use:
 
 The rates live in `root/settings.py`, so changing a limit doesn't need a code change.
 
+### WebSocket frames: a token bucket per socket (T-04)
+
+DRF throttles only see HTTP requests. A WebSocket is **one** HTTP request, then any number of
+frames, so frames need their own limit (`chats/ratelimit.py`, used in `chats/consumers.py`).
+
+A **token bucket** holds up to `burst` tokens and refills `rate` tokens per second. Each frame
+spends one token. With no token left, the frame is refused with `{"type": "error", "detail": "Slow down."}`,
+and the socket stays open.
+
+```
+burst=10, rate=1/s
+t=0.0s  20 frames arrive at once → 10 pass, 10 refused (bucket empty)
+t=1.0s  1 token has refilled     → 1 frame passes
+t=60s   idle for a minute         → bucket is full again at 10, never more
+```
+
+Why a bucket and not "10 per minute" like DRF? A bucket allows a natural burst (pasting several
+lines quickly) but caps the *sustained* rate at 1 per second. It only needs two numbers and no
+cache, so it costs nothing per frame. The limitation: it lives in the socket's memory, so a
+user with 5 tabs gets 5 buckets. That's why we also cap a user at **5 sockets**, counted
+from the presence set in Redis.
+
 ## 6. Alternatives
 
 | Option | Sees | Good for | Can't do |
@@ -78,7 +100,7 @@ The rates live in `root/settings.py`, so changing a limit doesn't need a code ch
 | **App throttles (DRF)**, what we use | User, phone number, IP, URL | Business rules ("5 logins per number") | Stop traffic before it reaches Python |
 | **Reverse proxy** (nginx `limit_req`) | IP, URL | Cheap, coarse floods | Anything about accounts |
 | **Edge WAF/CDN** (e.g. Cloudflare) | IP, browser fingerprint, reputation | Big distributed attacks, bots | Your business rules |
-| **Token bucket in memory** | One WebSocket | Messages per socket (T-04) | Limits shared across processes |
+| **Token bucket in memory**, what we use for frames | One WebSocket | Frames per socket (T-04) | Limits shared across processes |
 
 The plan ([Decision 0.2](../../scaling/02-plan.md)) uses app throttles now, adds nginx in Stage 1 and an edge
 WAF later. They stack: each layer catches what the others can't see.
