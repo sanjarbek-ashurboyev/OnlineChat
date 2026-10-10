@@ -71,6 +71,8 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
 
 - **Cleanup code must not depend on every step succeeding.** A failing `group_discard` used to skip "mark
   offline". Log the failure, then do the important step anyway. → [P-13](docs/learning-journal/problems-and-solutions.md#p-13--a-burst-of-disconnects-left-users-online-cor-2)
+- **A quiet socket is a test case.** redis-py 8's default 5 s socket timeout crashed every idle consumer (channels-redis
+  blocks for 5 s). Major bumps can change *defaults*: read the changelog. → [P-17](docs/learning-journal/problems-and-solutions.md#p-17--every-quiet-websocket-crashed-after-5-seconds-redis-py-8)
 - **"Too many connections" can be a client-side pool limit.** redis-py's pool allows 100 per process and raises
   instead of waiting. Read the library before tuning the server.
 - **Port 5432 on this Mac belongs to a Homebrew Postgres 14**, not the Docker one, and it's too old for Django 6.1.

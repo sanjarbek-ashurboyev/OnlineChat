@@ -28,6 +28,7 @@ It follows the real repository: file names, commands and results are the actual 
 8. [008 · T-02: a socket that closes always marks the user offline](sessions/008-t02-disconnect-marks-offline.md)
 9. [009 · T-03: rate limits on login, registration, refresh, profiles and new chats](sessions/009-t03-throttles.md)
 10. [010 · T-04: WebSocket input checks, a frame limit per socket, at most 5 sockets per user](sessions/010-t04-websocket-input-and-rate-limits.md)
+12. [012 · Hotfix: quiet WebSockets crashed after 5 seconds (redis-py 8)](sessions/012-redis-socket-timeout.md)
 
 ## How to use it to learn
 
