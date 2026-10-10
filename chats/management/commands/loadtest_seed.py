@@ -66,7 +66,7 @@ class Command(BaseCommand):
                 batch_size=2000,
             )
             chats = Chat.objects.bulk_create(
-                [Chat(user1=a, user2=b) for a, b in zip(users[::2], users[1::2])],
+                [Chat(user1=a, user2=b) for a, b in zip(users[::2], users[1::2], strict=True)],
                 batch_size=2000,
             )
             Message.objects.bulk_create(
