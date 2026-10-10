@@ -344,7 +344,7 @@ I don't know your provider, region or budget, and prices change, so this gives y
 - [ ] T-01, T-02, T-03, T-04, T-05 (decision), T-06, T-08, T-09, T-11 done
 - [ ] `check --deploy` clean; `gitleaks` clean; new secret key in use
 - [ ] Abuse scripts: brute force, enumeration, message flood all rejected
-- [ ] Baseline measured with the realistic profile from a second machine
+- [ ] Baseline measured with the realistic profile from a second machine. *2026-10-11 (session 014): the second-machine run was limited by an iPhone hotspot (200 healthy); from the server machine one process is healthy to 750 and falls off a cliff at 1,000. Re-run on a normal network to tick this.*
 
 ### Stage 1 done (1,000 online)
 - [ ] T-10, T-12, T-14 (restore drill done and timed)

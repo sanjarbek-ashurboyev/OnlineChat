@@ -297,3 +297,17 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   block a new socket), and one test against real Redis. They failed first: `refresh()` couldn't target one
   socket, and a user whose only socket died stayed online.
 - **Lesson:** one expiry for a whole group, renewed by any member, means a dead member never expires.
+
+## P-19 · The second-machine baseline measured the hotspot, not the server
+
+- **Session:** [014](sessions/014-baseline-load-test.md)
+- **Observed:** with the generator on a second Mac, the realistic profile passed at 200 users and failed at 300
+  (message p95 616 ms). The server's CPU never passed about 30% of one core, and there were no server errors during the steps.
+- **Root cause (Confirmed, by experiment):** both Macs were on an **iPhone Personal Hotspot** (`172.20.10.x`). Every
+  packet between them makes two wireless hops through the phone. Even at 100 users, the lightest frame (ping) had a
+  p95 of 366 ms. Running the **same** 300-user step from the server Mac itself (no network in between) gave
+  message p95 **90 ms** and ping p95 **44 ms**, a pass, even though the generator then competed with the server for CPU.
+- **Fix:** none in code. The result is recorded as network-limited, and the server's own ceiling was measured
+  separately (healthy at 750, cliff at 1,000).
+- **Lesson:** "run the generator on another machine" assumes a good network between them. Measure the network,
+  or compare with a local run, before blaming the server.

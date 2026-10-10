@@ -1,6 +1,6 @@
 # Progress
 
-*Updated: 2026-10-11 (session 013).*
+*Updated: 2026-10-11 (session 014).*
 
 **Status words:** **Done** = code written, tests or checks run and passing, committed.
 **Partial** = some of the acceptance criteria are met. **Blocked** = waiting on something outside
@@ -30,8 +30,8 @@ were already fixed on `main` before this journal started.
 | T-04 WebSocket input checks, frame limit per socket, 5 sockets per user (COR-3, SEC-5) | **Done**, merged as [PR #19](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/19) | COR-3 reproduced by a failing test, then 68/68 pass; all 4 CI jobs. DB `CHECK` and load-test acceptance not done | `main` `66060a7` |
 | T-09 Gap fetch, reconnect jitter, visible close codes (COR-1, COR-4, COR-5) | **Done**, merged as [PR #20](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/20) | Tests failed first, then 73/73 pass; all 4 CI jobs. Browser check: missed messages appear after a restart; 4429 visible; refused reconnects back off | `main` `00f9789` |
 | Hotfix: quiet WebSockets crashed after 5 s (redis-py 8 default timeout) | **Done**, merged as [PR #21](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/21) | Reproduced 3/3; new test failed first, passes now; full suite on real Postgres + Redis: 69 OK; all 4 CI jobs | `main` `f69fbe7` |
-| Fix: leftover presence entries locked users out (one TTL per user, renewed by any tab) | **Done** locally, PR open | Tests failed first; 80/80 on real Postgres + Redis (incl. a real-Redis presence test); real-stack check: dead entry pruned on connect | `fix-presence-leak` |
-| Baseline load test (realistic profile, second machine) | Planned | | |
+| Fix: leftover presence entries locked users out (one TTL per user, renewed by any tab) | **Done**, merged as [PR #22](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/22) | Tests failed first; 80/80 on real Postgres + Redis (incl. a real-Redis presence test); all 4 CI jobs; real-stack check: dead entry pruned on connect | `main` `ac84b47` |
+| Baseline load test (realistic profile, second machine) | **Partial** | One Daphne process, `DEBUG=False`, commit `ac84b47`. Second Mac over an iPhone hotspot: 200 healthy, 300 failed, **network-limited** (P-19). Same Mac: healthy to **750**, cliff at 1,000 (WebSocket path only; REST stayed at 39 ms). Needs a re-run on a normal network | [session 014](sessions/014-baseline-load-test.md) |
 
 Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), and 50/50 tests pass locally.
 
