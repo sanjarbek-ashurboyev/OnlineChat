@@ -18,6 +18,7 @@ from accounts.serializers import (
     RegisterSerializer,
     UserLookupSerializer,
 )
+from accounts.throttles import LoginIPThrottle, LoginPhoneThrottle
 
 
 # Create your views here.
@@ -25,14 +26,17 @@ from accounts.serializers import (
 class RegisterCreateAPIView(CreateAPIView):
     permission_classes = [AllowAny]
     serializer_class = RegisterSerializer
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'register_ip'
 
 @extend_schema(tags=['auth'])
 class CustomTokenObtainPairView(TokenObtainPairView):
-    pass
+    throttle_classes = [LoginIPThrottle, LoginPhoneThrottle]
 
 @extend_schema(tags=['auth'])
 class CustomTokenRefreshView(TokenRefreshView):
-    pass
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'refresh'
 
 
 @extend_schema(tags=['auth'])
@@ -79,6 +83,8 @@ class UserLookupAPIView(RetrieveAPIView):
 class PublicUserAPIView(RetrieveAPIView):
     serializer_class = PublicUserSerializer
     permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'profile_read'
 
     def get_queryset(self):
         return User.objects.exclude(blocks_made__blocked=self.request.user)

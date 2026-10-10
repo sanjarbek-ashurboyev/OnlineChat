@@ -24,6 +24,9 @@ from test_helpers import (
 class RegisterTests(TestCase):
     URL = '/api/v1/auth/register/'
 
+    def setUp(self):
+        cache.clear()  # the register throttle counts in the cache
+
     def register(self, **overrides):
         data = {'phone_number': phone(1), 'password': PASSWORD, 'confirm_password': PASSWORD,
                 'first_name': 'Ali'}
@@ -92,6 +95,62 @@ class LoginTests(TestCase):
         self.assertEqual(client.get('/api/v1/auth/profile/').status_code, 200)
         self.user.refresh_from_db()
         self.assertIsNotNone(self.user.last_seen)
+
+
+class AuthThrottleTests(TestCase):
+    """SEC-3: login, registration and refresh are rate limited."""
+    LOGIN = '/api/v1/auth/login/'
+
+    def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)  # don't leave full counters for later tests
+
+    def login(self, n, ip='10.0.0.1'):
+        return APIClient().post(self.LOGIN, {'phone_number': phone(n), 'password': 'wrong'},
+                                REMOTE_ADDR=ip)
+
+    def test_one_phone_number_gets_5_logins_a_minute_from_any_ip(self):
+        for _ in range(5):
+            self.assertEqual(self.login(1).status_code, 401)
+        self.assertEqual(self.login(1).status_code, 429)
+        self.assertEqual(self.login(1, ip='10.0.0.2').status_code, 429)
+        self.assertEqual(self.login(2).status_code, 401, 'other numbers are unaffected')
+
+    def test_the_phone_limit_ignores_how_the_number_is_written(self):
+        for _ in range(5):
+            self.login(1)
+        response = APIClient().post(self.LOGIN, {'phone_number': '90 123 45 01', 'password': 'wrong'})
+        self.assertEqual(response.status_code, 429)
+
+    def test_a_body_that_is_not_an_object_is_a_400_not_a_crash(self):
+        response = APIClient().post(self.LOGIN, ['+998901234501'], format='json')
+        self.assertEqual(response.status_code, 400)
+
+    def test_one_ip_gets_20_logins_a_minute(self):
+        for n in range(20):
+            self.assertEqual(self.login(n).status_code, 401)
+        self.assertEqual(self.login(20).status_code, 429)
+        self.assertEqual(self.login(20, ip='10.0.0.2').status_code, 401, 'other IPs are unaffected')
+
+    def test_one_ip_can_register_5_times_an_hour(self):
+        def register(n, ip='10.0.0.1'):
+            return APIClient().post('/api/v1/auth/register/', {
+                'phone_number': phone(n), 'password': PASSWORD, 'confirm_password': PASSWORD,
+                'first_name': 'Ali'}, REMOTE_ADDR=ip)
+
+        for n in range(5):
+            self.assertEqual(register(n).status_code, 201)
+        self.assertEqual(register(5).status_code, 429)
+        self.assertEqual(register(5, ip='10.0.0.2').status_code, 201)
+
+    def test_one_ip_can_refresh_30_times_a_minute(self):
+        def refresh():
+            return APIClient().post('/api/v1/auth/token/refresh/', {'refresh': 'garbage'},
+                                    REMOTE_ADDR='10.0.0.1')
+
+        for _ in range(30):
+            self.assertEqual(refresh().status_code, 401)
+        self.assertEqual(refresh().status_code, 429)
 
 
 class ProfileTests(TestCase):
@@ -167,6 +226,17 @@ class PublicUserTests(FakePresenceMixin, TestCase):
     def test_someone_who_blocked_you_is_hidden(self):
         Block.objects.create(blocker=self.other, blocked=self.me)
         self.assertEqual(client_for(self.me).get(self.url()).status_code, 404)
+
+    def test_profiles_by_id_are_limited_to_120_a_minute(self):
+        # SEC-4: ids are sequential, so this is how a scraper would walk every user.
+        cache.clear()
+        self.addCleanup(cache.clear)
+        client = client_for(self.me)
+        for _ in range(120):
+            self.assertEqual(client.get(self.url()).status_code, 200)
+        self.assertEqual(client.get(self.url()).status_code, 429)
+        self.assertEqual(client_for(self.other).get(f'/api/v1/users/{self.me.id}/').status_code, 200,
+                         'other users are unaffected')
 
 
 class SigningKeyTests(SimpleTestCase):

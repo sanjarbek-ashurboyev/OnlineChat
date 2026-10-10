@@ -12,6 +12,7 @@ Read these in order the first time. Each one builds on the ones before it.
 | 6 | [Git branches, merge and rebase](git-branches-merge-rebase.md) | Basic git commit/push | Bookmarks and replaying work |
 | 7 | [Performance and load testing](performance-and-load-testing.md) | 1, 2 | Measure, find the one bottleneck, fix the cheapest cause |
 | 8 | [Testing and CI](testing-and-ci.md) | 2, 4 | Prove it works, automatically, on every change |
+| 9 | [Rate limiting](rate-limiting.md) | 3 | A bouncer counting how often each person comes in |
 
 Words used everywhere:
 

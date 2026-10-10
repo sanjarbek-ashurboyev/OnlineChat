@@ -26,6 +26,7 @@ It follows the real repository: file names, commands and results are the actual 
 6. [006 · Syncing with GitHub, and redoing T-01 and T-08](sessions/006-syncing-with-github.md)
 7. [007 · T-11: tests and CI against real services, secret scanning, branch protection](sessions/007-t11-tests-and-ci.md)
 8. [008 · T-02: a socket that closes always marks the user offline](sessions/008-t02-disconnect-marks-offline.md)
+9. [009 · T-03: rate limits on login, registration, refresh, profiles and new chats](sessions/009-t03-throttles.md)
 
 ## How to use it to learn
 

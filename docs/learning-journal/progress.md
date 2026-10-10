@@ -1,6 +1,6 @@
 # Progress
 
-*Updated: 2026-10-10 (session 008, plus GOTCHA.md).*
+*Updated: 2026-10-10 (session 009).*
 
 **Status words:** **Done** = code written, tests or checks run and passing, committed.
 **Partial** = some of the acceptance criteria are met. **Blocked** = waiting on something outside
@@ -26,7 +26,8 @@ were already fixed on `main` before this journal started.
 | T-11 Tests + CI | **Done**, merged as [PR #14](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/14) | 53 tests; all 4 CI jobs green (lint, test, test-postgres-redis, secrets) | `t-11-tests-and-ci` |
 | Branch protection (`protect-main` ruleset) | **Done** (by you) | Read back through the API: active on `main`, PR plus 4 checks plus up-to-date required | GitHub settings |
 | T-02 Disconnect always marks offline (COR-2) | **Done**, merged as [PR #15](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/15) | Regression test fails before and passes after; 54/54 tests; all 4 CI jobs. Load-test acceptance not run yet | `main` `6c6e16d` |
-| T-03, T-04 | Planned | | |
+| T-03 Throttles for login, registration, refresh, profiles, new chats (SEC-3, SEC-4) | **Done** locally, PR open | Tests failed first, then 62/62 pass; Ruff clean. `NUM_PROXIES` and the load-test acceptance not done yet | `t-03-throttles` |
+| T-04 | Planned | | |
 | T-09 Gap fetch + reconnect jitter | Planned | | |
 | Baseline load test (realistic profile, second machine) | Planned | | |
 
@@ -36,7 +37,7 @@ Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), a
 
 | What | How | Result |
 |---|---|---|
-| Test suite | `make test` (`manage.py test --settings=root.settings_test`) | 50 on `main`, 53 on the T-11 branch, all pass |
+| Test suite | `make test` (`manage.py test --settings=root.settings_test`) | 62 on the T-03 branch, all pass |
 | Test suite on real services | CI job `test-postgres-redis` (Postgres 17, Redis 7, normal settings) | 53 pass (T-11 branch) |
 | No secrets in history | CI job `secrets` (gitleaks 8.30.1, custom `django-secret-key` rule) | Clean; a planted key is caught |
 | Lint | `ruff check .` (version 0.16.10, as in CI) | Clean |
@@ -49,8 +50,8 @@ Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), a
 ## Known issues (open)
 
 See the [audit](../scaling/01-audit.md) and its status update. The most important still-open items:
-- **SEC-3/4/5:** no rate limits on login, registration, messages or user lookup by id (T-03, T-04).
-  The message *size* is now capped.
+- **SEC-5:** no rate limit on WebSocket messages (T-04). The message *size* is now capped.
+  SEC-3/4 (login, registration, refresh, user by id, new chats) are limited on the T-03 branch.
 - **COR-1:** messages that arrive during a reconnect never show in the open chat (T-09).
 - **COR-3:** a JSON array or a numeric `text` still crashes the consumer (T-04).
 - **PERF-1/2/3:** one DB thread per process, plus a new DB connection per call (Stage 1).
@@ -83,6 +84,7 @@ That's self-reported; nothing has been tested yet, so every concept starts at
 | Dependency management | [guide](concepts/dependency-management.md) | Explained | Session 004 | Add a package to `requirements.in`, run `pip-compile`, and read the diff. Revert afterwards. |
 | Git branches, merge, rebase | [guide](concepts/git-branches-merge-rebase.md) | Explained | Sessions 002, 003 | In a throwaway repo, make a fast-forward merge, a rebase and a `--force-with-lease` push to a local bare remote. |
 | Performance, bottlenecks, load testing | [guide](concepts/performance-and-load-testing.md) | Explained | Session 001 |
+| Rate limiting (throttles) | [guide](concepts/rate-limiting.md) | Explained | Session 009 | Run the server, then send 6 wrong logins for one number with `curl` in a loop. Read the 429 and its `Retry-After` header. Predict when the 7th will work, then check. |
 | Testing, CI, test databases, secret scanning | [guide](concepts/testing-and-ci.md) | Explained | Session 007 | Recompute the PERF-4 table yourself for 150 users. Predict healthy or failing. | Break a test on purpose (change an expected status code), push to a PR branch, and read the CI log to find it. Then explain P-12 in your own words. |
 
 Mark a row *Practiced* yourself after doing its exercise. It becomes *Demonstrated* when you

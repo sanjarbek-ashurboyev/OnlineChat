@@ -74,6 +74,7 @@ says which test proves the mitigation works.
 - **Acceptance:** the load test's end-of-run disconnects produce no presence leftovers.
 
 **T-03 · Throttles for auth, enumeration and chat creation** · C · 3–6 h · Next? yes
+- **Status (2026-10-10): step 1 done** on `t-03-throttles` (session 009): the rates below, plus a per-phone login throttle in `accounts/throttles.py`, 8 new tests. Step 2 (`NUM_PROXIES`) waits for a proxy; the load-test acceptance is not run yet.
 - **Problem:** SEC-3, SEC-4.
 - **Files:** `accounts/views.py`, `chats/views.py`, `root/settings.py`, new `accounts/throttles.py` (phone-keyed login throttle).
 - **Steps:**

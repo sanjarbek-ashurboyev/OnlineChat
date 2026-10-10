@@ -6,6 +6,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.generics import ListCreateAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from chats import presence
@@ -26,6 +27,11 @@ def chats_for(user):
 @extend_schema(tags=['chats'])
 class ChatListCreateAPIView(ListCreateAPIView):
     permission_classes = [IsAuthenticated]
+    throttle_scope = 'chat_create'
+
+    def get_throttles(self):
+        # Only starting a chat is limited; the client polls the list.
+        return [ScopedRateThrottle()] if self.request.method == 'POST' else []
 
     def get_serializer_class(self):
         return ChatCreateSerializer if self.request.method == 'POST' else ChatSerializer
