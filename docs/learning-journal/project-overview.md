@@ -122,12 +122,17 @@ A single page in plain JavaScript (no framework):
 
 ### Tests, lint and CI
 - `accounts/tests.py`, `chats/tests.py` (REST) and `chats/test_consumers.py` (WebSocket, through
-  the full ASGI stack with `WebsocketCommunicator`) hold 50 tests.
+  the full ASGI stack with `WebsocketCommunicator`, in a `TransactionTestCase`) hold 53 tests (T-11 branch).
 - `test_helpers.py` has shared builders (`make_user`, `token_for`) and `FakePresenceMixin`,
   which swaps Redis presence for a dict.
 - Run them with `make test`. Lint with `ruff check .` (rules in `ruff.toml`).
-- `.github/workflows/tests.yml` runs Ruff, `pip-audit`, the tests, `makemigrations --check` and
-  `check --deploy --tag security` on every push to `main` and on every PR. Dependabot opens update PRs.
+- `.github/workflows/tests.yml` has four jobs, run on every PR and every push to `main`:
+  - `lint`: Ruff.
+  - `test`: `pip-audit`, the tests on SQLite, `makemigrations --check`, `check --deploy --tag security`.
+  - `test-postgres-redis`: the tests against Postgres 17 and Redis 7 with the normal settings.
+  - `secrets`: gitleaks over the full history, with `.gitleaks.toml` and `.gitleaksignore`.
+- The `protect-main` ruleset requires a PR and all four jobs before anything reaches `main`.
+- Dependabot opens update PRs (`.github/dependabot.yml`).
 - `README.md` has setup instructions for new developers.
 
 ## API endpoints

@@ -24,7 +24,18 @@ makes reviews harder, and if one change is bad you can't drop it without droppin
 ## Additions (2026-10-10)
 - **Fetch first:** before branching, run `git fetch` and make sure `main` isn't behind `origin/main`
   ([P-09](../problems-and-solutions.md#p-09--local-main-was-five-commits-behind-github)).
-- **Docs-only changes** (journal, scaling docs) go straight to `main`. Code goes through a branch and a PR.
+- ~~Docs-only changes go straight to `main`.~~ Replaced the same day, see below.
+
+## Update 2026-10-10: a pull request for everything, enforced
+- **Every** change, docs included, goes through a PR. CI then runs before the change lands, every change
+  is one reviewable and revertable unit, and the history shows how the work was done.
+- It's enforced by a GitHub ruleset, `protect-main`, on the default branch:
+  - a PR is required (0 approvals, since you can't approve your own PR);
+  - `lint`, `test`, `test-postgres-redis` and `secrets` must pass;
+  - the branch must be up to date with `main`;
+  - no forced pushes, no deletion, and an empty bypass list.
+- You created the ruleset yourself. It's a guardrail on everyone who pushes, including the AI, so the AI
+  shouldn't set it up.
 
 ## When another option is better
 Working completely alone on throwaway experiments: committing to `main` is fine.

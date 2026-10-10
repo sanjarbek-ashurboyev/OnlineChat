@@ -45,9 +45,9 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
 - **Session:** [002](sessions/002-review-and-first-commit.md)
 - **Observed:** `connection to server at "127.0.0.1", port 5432 failed: FATAL: role "onlinechat_user" does not exist`,
   followed by `No changes detected`.
-- **Root cause (Hypothesis):** the audit (OPS-9) found a Homebrew Postgres on `127.0.0.1:5432`
-  that answers instead of the Docker one, and it doesn't have our user. We didn't re-verify
-  this time.
+- **Root cause (Confirmed in session 007):** `lsof -iTCP:5432 -sTCP:LISTEN` shows a `postgres` process
+  run from `/opt/homebrew/opt/postgresql@14`. A Homebrew **Postgres 14** answers on `127.0.0.1:5432`
+  instead of the Docker one, and it doesn't have our user. It's also older than Django 6.1 supports (15+).
 - **Why the check still worked:** `makemigrations` only *warns* when it can't reach the database
   to check migration history. Comparing models to migration files doesn't need the database.
 - **To confirm:** `lsof -iTCP:5432 -sTCP:LISTEN` shows which program owns the port.
@@ -140,4 +140,37 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
 - **Verified:** 48/48 tests pass, plus the 2 new ones.
 - **Lesson:** when you change settings, think about *every* settings file that imports them. Test settings
   usually inherit production behaviour. That's good, until something like a redirect breaks the test client.
+
+## P-11 · gitleaks' built-in rules missed our real leaked key
+
+- **Session:** [007](sessions/007-t11-tests-and-ci.md)
+- **Observed:** `gitleaks git .` over the full history: "no leaks found". But commit `3bd73a8` contains the
+  original `SECRET_KEY` (confirmed with `git log -S`).
+- **Root cause (Confirmed):** gitleaks matches known token formats (AWS keys, GitHub tokens, JWTs…) and generic
+  patterns. A Django key like `django-insecure-…` assigned to `SECRET_KEY` matched none of them.
+- **Fix:** a custom rule in `.gitleaks.toml` (`django-secret-key`) for hard-coded `SECRET_KEY = '…'` values.
+  It found 3 matches:
+  - the burned key → listed in `.gitleaksignore` by fingerprint (commit:file:rule:line);
+  - the dev-only fallback, in code and in this journal → allowlisted by exact value.
+- **Verified:** the repository scan is clean. A scratch repo with a new hard-coded key is caught ("leaks found: 1").
+- **Lesson:** a scanner reporting "clean" only means "nothing matched my rules". Test your tools on a known
+  positive before trusting a negative.
+
+## P-12 · WebSocket tests passed on SQLite but failed on Postgres
+
+- **Session:** [007](sessions/007-t11-tests-and-ci.md)
+- **Observed:** in the new CI job against real Postgres, all 13 tests in `chats/test_consumers.py` errored with
+  `psycopg.OperationalError: the connection is closed`. All 40 REST tests passed. On SQLite everything passed.
+- **Root cause (Confirmed by reading the library source):**
+  1. Django's `TestCase` runs each test inside a transaction, so autocommit is **off**.
+  2. Channels' `database_sync_to_async` calls `close_old_connections()` before and after each call (`channels/db.py`).
+  3. That calls `close_if_unusable_or_obsolete()`, which **closes** a connection whose autocommit differs
+     from the setting (`django/db/backends/base/base.py`). The test's own connection, and its transaction, are gone.
+  4. SQLite's `close()` does nothing for an in-memory database, because closing would delete it. That hid the problem.
+- **Fix:** `InboxSocketTestCase` now inherits from `TransactionTestCase`. Data is really committed, and the
+  tables are emptied after each test. This is what the Channels docs recommend for consumers that use the database.
+- **Verified:** 53/53 locally on SQLite, and all four CI jobs pass, including Postgres + Redis.
+- **Not a production bug:** production runs with autocommit on. It's purely a test-harness problem.
+- **Lesson:** a test database that behaves differently from production can hide bugs, or hide broken tests.
+  That's exactly why the Postgres/Redis job was added, and it paid off on its first run.
 

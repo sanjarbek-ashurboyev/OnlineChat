@@ -128,7 +128,7 @@ says which test proves the mitigation works.
 - **Tests:** reconnect test; COR-5 check.
 
 **T-11 · Test suite + CI** · C · 1–2 days · Next? yes
-- **Status (2026-10-10): mostly done** by PR #5 (`902e2b8`): 48 tests (register/login, access control, WS and REST send, read receipts, the user-lookup throttle, `unread_count`), and CI (`.github/workflows/tests.yml`) with Ruff, tests on SQLite with an in-memory channel layer, and `makemigrations --check`. `check --deploy` (PR #6) and `pip-audit` (PR #7) are in CI too. **Still to do:** a refresh-token test, Postgres + Redis services in CI, `gitleaks`, and the T-02/T-04/T-09 tests as those tasks land. The suite uses Django's runner, not pytest, which is fine.
+- **Status (2026-10-10): done** (PR #5, then PR #14). 53 tests. CI runs Ruff; tests on SQLite with the test settings; tests on **Postgres 17 + Redis 7** with the normal settings; `makemigrations --check`; `check --deploy`; `pip-audit`; and **gitleaks** over the full history. The WebSocket tests use `TransactionTestCase`. The T-02/T-04/T-09 tests come with those tasks. The suite uses Django's runner, not pytest, which is fine.
 - **Files:** `pytest.ini`, `conftest.py`, `accounts/tests/`, `chats/tests/`, `.github/workflows/ci.yml`.
 - **Minimum set:**
   - Register/login/refresh.
