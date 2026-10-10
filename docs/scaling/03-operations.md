@@ -50,6 +50,7 @@ says which test proves the mitigation works.
 ### Category 1 · Critical security and data-integrity fixes (Stage 0)
 
 **T-01 · Settings from environment, rotate secret** · C · 2–4 h · Next? yes
+- **Status (2026-10-10):** env-based settings landed on `main` in `763c9da`. Branch `t-01-settings-from-env` adds the HTTPS settings, `CSRF_TRUSTED_ORIGINS`, the forged-token tests and `check --deploy` in CI.
 - **Problem:** SEC-1, SEC-2, OPS-7. **Why now:** a breach at any scale.
 - **Files:** `root/settings.py`, `.env` (local only), new `.env.example`.
 - **Steps:**
@@ -114,6 +115,7 @@ says which test proves the mitigation works.
 - **Tests:** after logout, refresh → 401.
 
 **T-08 · Complete, pinned dependencies** · H · 1–2 h · Next? yes
+- **Status (2026-10-10):** partly on `main` (`763c9da`, `6267925`). Branch `t-08-pinned-deps` adds `requirements.in`, the full pins for Python 3.13, psycopg 3, `pip-audit` in CI and Dependabot.
 - **Steps:**
   1. `requirements.in` (direct deps) → `pip-compile` → pinned `requirements.txt`.
   2. Include `channels`, `channels-redis`, `daphne`, `redis`, `psycopg[binary,pool]`; drop `psycopg2-binary`.
@@ -126,6 +128,7 @@ says which test proves the mitigation works.
 - **Tests:** reconnect test; COR-5 check.
 
 **T-11 · Test suite + CI** · C · 1–2 days · Next? yes
+- **Status (2026-10-10): mostly done** by PR #5 (`902e2b8`): 48 tests (register/login, access control, WS and REST send, read receipts, the user-lookup throttle, `unread_count`), and CI (`.github/workflows/tests.yml`) with Ruff, tests on SQLite with an in-memory channel layer, and `makemigrations --check`. `check --deploy` and `pip-audit` come with T-01 and T-08. **Still to do:** a refresh-token test, Postgres + Redis services in CI, `gitleaks`, and the T-02/T-04/T-09 tests as those tasks land. The suite uses Django's runner, not pytest, which is fine.
 - **Files:** `pytest.ini`, `conftest.py`, `accounts/tests/`, `chats/tests/`, `.github/workflows/ci.yml`.
 - **Minimum set:**
   - Register/login/refresh.

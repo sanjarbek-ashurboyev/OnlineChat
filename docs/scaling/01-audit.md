@@ -14,6 +14,27 @@ Every finding below has an **evidence level**:
 
 ---
 
+
+## Status update · 2026-10-10
+
+This audit was written against commit `3bd73a8`. GitHub's `main` had already moved on
+(`763c9da`…`d00f461`, 2026-10-06 to 10-08), and the local copy hadn't been synced. Line numbers
+below may be off by a few lines. Current status of the findings that changed:
+
+| Finding | Status | Where |
+|---|---|---|
+| SEC-1 committed `SECRET_KEY` | **Fixed in code:** read from env; the old key is burned. The forged-token tests are on branch `t-01-settings-from-env`. | `763c9da`, T-01 branch |
+| SEC-2 production settings | **Partly fixed:** `DEBUG`/`ALLOWED_HOSTS` from env. The HTTPS settings and the CI `check --deploy` are on the T-01 branch. | `763c9da`, T-01 branch |
+| SEC-5 message size | **Size fixed** (`MAX_MESSAGE_LENGTH = 4000` in REST and WS). The rate limit is **still open**. | `902e2b8` |
+| SEC-6 avatars | **User files removed from git**, `media/` ignored. No size limit and local disk: **still open**. | `763c9da` |
+| SEC-10 / OPS-3 dependencies | **Partly fixed:** channels/daphne/redis added, simplejwt pinned. The full pins, psycopg 3 and `pip-audit` are on branch `t-08-pinned-deps`. | `763c9da`, `6267925`, T-08 branch |
+| OPS-1 / OPS-2 tests and CI | **Mostly fixed:** 48 tests (REST + WebSocket), CI with Ruff, tests and `makemigrations --check`. See T-11 for what's left. | `902e2b8` |
+| OPS-7 config split | **Fixed.** | `763c9da` |
+
+Still open, re-checked against the current code: SEC-3, SEC-4, SEC-7, SEC-8, SEC-9, every COR
+finding (COR-3: the existing test covers bad JSON and unknown actions, but not a JSON array or a
+numeric `text`), and every PERF finding.
+
 ## 1.1 What was inspected
 
 All 40 tracked files were read in full (2,307 lines). In addition:

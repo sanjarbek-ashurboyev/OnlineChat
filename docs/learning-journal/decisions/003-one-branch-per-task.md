@@ -21,5 +21,10 @@ makes reviews harder, and if one change is bad you can't drop it without droppin
 - Tasks that depend on each other must be landed in order, or stacked.
 - Rebasing a pushed branch needs a `--force-with-lease` push ([P-06](../problems-and-solutions.md#p-06--after-the-rebase-the-local-and-github-copies-of-the-t-01-branch-diverged)).
 
+## Additions (2026-10-10)
+- **Fetch first:** before branching, run `git fetch` and make sure `main` isn't behind `origin/main`
+  ([P-09](../problems-and-solutions.md#p-09--local-main-was-five-commits-behind-github)).
+- **Docs-only changes** (journal, scaling docs) go straight to `main`. Code goes through a branch and a PR.
+
 ## When another option is better
 Working completely alone on throwaway experiments: committing to `main` is fine.

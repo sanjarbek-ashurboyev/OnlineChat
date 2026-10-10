@@ -4,6 +4,8 @@ Repository-specific audit and staged plan for growing OnlineChat to **10,000 use
 online at the same time**: now (~100 online) → 1,000 online → 10,000 online.
 100,000+ online is out of scope.
 Written 2026-10-09 against commit `3bd73a8`.
+**2026-10-10:** `main` already contained later work (secrets from env, tests, CI). See the
+[status update in the audit](01-audit.md#status-update--2026-10-10) for which findings are fixed.
 
 ## Executive summary
 
@@ -46,7 +48,7 @@ Written 2026-10-09 against commit `3bd73a8`.
 |---|---|---|
 | 1 | **T-01** move `SECRET_KEY`/`DEBUG`/`ALLOWED_HOSTS` to env, generate a new key | Critical, 2–4 h |
 | 2 | **T-08** complete and pin `requirements.txt` | A fresh install currently fails |
-| 3 | **T-11** first tests + CI | Every later change needs a safety net |
+| 3 | **T-11** finish tests + CI (mostly done in PR #5) | Every later change needs a safety net |
 | 4 | **T-02**, **T-03**, **T-04** | Small, high-value fixes |
 | 5 | **T-09** gap fetch + reconnect jitter | Makes every later deploy and failover safe |
 | 6 | Baseline load test with the realistic profile, from a second machine | Know the real starting point before optimising |

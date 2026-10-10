@@ -1,6 +1,12 @@
 # 001 · Settings and secrets come from environment variables
 
-- **Date:** 2026-10-10 · **Task:** T-01 · **Status:** Accepted · **Commit:** `68468d0` (branch `t-01-settings-from-env`)
+- **Date:** 2026-10-10 · **Task:** T-01 · **Status:** Accepted · **Commit:** `763c9da` on `main`, plus `9d3ef86` on branch `t-01-settings-from-env`
+
+> **Update 2026-10-10:** GitHub's `main` already had its own version of this (`763c9da`). It uses
+> `DJANGO_DEBUG=True/False` and a dev-only fallback key when DEBUG is on. We kept that version and
+> added only the missing parts (HTTPS settings, `CSRF_TRUSTED_ORIGINS`, tests, the CI check) on
+> branch `t-01-settings-from-env` (`9d3ef86`). The reasoning below still holds; the code examples in
+> session 003 show the first version. See [session 006](../sessions/006-syncing-with-github.md).
 
 ## Problem
 (The plan's version of this decision: [Decision 0.1 in 02-plan.md](../../scaling/02-plan.md).)

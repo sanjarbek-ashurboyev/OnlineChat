@@ -1,5 +1,9 @@
 # 004 · T-08: complete, pinned dependencies
 
+> **Superseded in part (2026-10-10):** this was the first version of T-08, compiled with Python 3.14 on a
+> stale `main`. It was redone on the real `main` and compiled for Python 3.13 (45 pins), with `pip-audit`
+> in CI: see [session 006](006-syncing-with-github.md). The concepts here still apply.
+
 - **Date:** 2026-10-10 · **Phase:** Stage 0
 - **Task:** T-08 (fixes SEC-10, OPS-3)
 - **Branch:** `t-08-pinned-deps`, **not committed yet**

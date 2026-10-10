@@ -1,6 +1,6 @@
 # 002 · Pin all dependencies with pip-tools
 
-- **Date:** 2026-10-10 · **Task:** T-08 · **Status:** Accepted · **Commit:** not yet (branch `t-08-pinned-deps`)
+- **Date:** 2026-10-10 · **Task:** T-08 · **Status:** Accepted · **Commit:** `ec6f48e` (branch `t-08-pinned-deps`)
 
 ## Problem
 `requirements.txt` was missing `daphne`, `channels`, `channels-redis` and `redis`, listed the wrong
@@ -21,7 +21,7 @@ WebSocket part of the app. See [dependency management](../concepts/dependency-ma
 
 ## Disadvantages and limits
 - `pip-compile` must be installed separately. It isn't in `requirements.txt`, because it's a developer tool.
-- Pins are resolved for one Python version (3.14) and platform. Different servers may need a recompile.
+- Pins are resolved for one Python version and platform. We compile with 3.13, to match CI. Different servers may need a recompile.
 - Slower than uv on big projects. That doesn't matter at our size.
 
 ## When another option is better

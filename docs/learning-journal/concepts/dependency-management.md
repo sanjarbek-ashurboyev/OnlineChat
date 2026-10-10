@@ -17,7 +17,8 @@ the code you tested is the code you ship.
 2. `pip-compile requirements.in` works out a compatible version for every package, including the
    transitive ones, and writes **`requirements.txt`** with exact pins and `# via` comments.
 3. Everyone (you, CI, servers) runs `pip install -r requirements.txt`.
-4. To upgrade, change `requirements.in` or run `pip-compile --upgrade`, then test and commit both files.
+4. To upgrade, run `pip-compile --upgrade` (everything) or `--upgrade-package NAME` (one package), then test
+   and commit both files. Without those flags, existing pins are kept.
 
 Analogy: `requirements.in` is the shopping list ("bread, milk"); `requirements.txt` is the receipt
 (exact brand, size and price of everything, bag included).
@@ -38,7 +39,7 @@ twisted==26.4.0
 ## 5. In our project (T-08)
 - `requirements.in` lists 12 direct dependencies, with comments on the non-obvious ones
   (e.g. `pillow` is there for `User.avatar`).
-- `requirements.txt` has 51 pinned packages.
+- `requirements.txt` has 45 pinned packages, compiled with Python 3.13 (the version CI uses).
 - **Version operators:**
   - `Django~=6.1.0` means "6.1.x": bug fixes allowed, not 6.2.
   - `psycopg[binary,pool]` adds *extras*: `binary` (a prebuilt C library, so nothing needs compiling)
@@ -64,7 +65,11 @@ twisted==26.4.0
 - **Testing in your everyday venv only.** It hides missing packages.
 - **Pinning and never updating.** Pins age into security holes. That's what Dependabot and `pip-audit` are for.
 - **Compiling with a different Python version than production.** Some packages pin differently per
-  Python version. We compiled with 3.14, so servers should run 3.14.
+  Python version. Compile with the Python version you deploy; we use 3.13, like CI.
+- **Expecting `pip-compile` to upgrade.** It keeps pins already in `requirements.txt` as long as they
+  still fit. That's why our file kept `redis==7.4.1` and `Django==6.1.1`, though an empty file would
+  get 8.1.0 and 6.1.2 (tested in [session 006](../sessions/006-syncing-with-github.md)). Use
+  `pip-compile --upgrade`, or `--upgrade-package NAME`, to move on.
 
 ## 8. When to use it
 For any application you deploy. (Libraries you *publish* do the opposite: wide version ranges, so

@@ -31,10 +31,22 @@ DEBUG = os.environ.get('DJANGO_DEBUG') == '1'   # optional: off unless exactly "
 `os.environ['X']` raises `KeyError` if the variable is missing. `os.environ.get('X')` returns `None`.
 Choose deliberately which one each setting should use.
 
-## 5. In our project (T-01, `root/settings.py`)
-- `SECRET_KEY` is required, with no default. A missing key stops startup with `KeyError: 'DJANGO_SECRET_KEY'`.
-- `DEBUG` is `True` only when `DJANGO_DEBUG == '1'`. This is **fail safe**: a typo means production mode.
-- `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` are comma-separated lists, read by `env_list()`.
+## 5. In our project (`root/settings.py`)
+```python
+DEBUG = os.environ.get('DJANGO_DEBUG', 'False') == 'True'
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', '')
+if not SECRET_KEY:
+    if not DEBUG:
+        raise RuntimeError('DJANGO_SECRET_KEY must be set when DEBUG is off.')
+    SECRET_KEY = 'django-insecure-local-development-only'
+```
+- `DEBUG` is `True` only when `DJANGO_DEBUG` is exactly `True`. This is **fail safe**: a typo or a
+  missing value means production mode.
+- **The key:** in production (DEBUG off) a missing key stops startup. In development there's a
+  clearly fake fallback, so a new developer can start without generating one. That's safe *because*
+  the fallback only exists when DEBUG is on, and the HTTPS settings below are tied to DEBUG being off.
+- `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` (T-01 branch) are comma-separated lists.
+- The rest of this section describes the T-01 branch.
 - When `DEBUG` is off:
   - `SECURE_PROXY_SSL_HEADER`: HTTPS ends at the reverse proxy, which tells Django through `X-Forwarded-Proto: https`.
   - `SECURE_SSL_REDIRECT`: `http://` is redirected to `https://`.
@@ -43,7 +55,11 @@ Choose deliberately which one each setting should use.
     short because browsers *remember* it; a year-long value plus a broken certificate locks users out.
 - **Why DEBUG must be off in production:** error pages show code, local variables and settings to the
   visitor, and Django keeps every SQL query in memory, which looks like a memory leak under load.
-- **`manage.py check --deploy`** lists production-unsafe settings. Run it with production env vars.
+- **`manage.py check --deploy`** lists production-unsafe settings. The T-01 branch runs it in CI with
+  `--tag security --fail-level WARNING`, so any new security warning fails the build.
+- **Tests run with DEBUG off** (`root/settings_test.py`), so that file turns `SECURE_SSL_REDIRECT`
+  off. Otherwise the plain-HTTP test client gets a 301 redirect on every request
+  ([P-10](../problems-and-solutions.md#p-10--39-tests-failed-after-adding-the-https-settings)).
 
 ## 6. Alternatives
 | Option | Notes |
@@ -55,8 +71,8 @@ Choose deliberately which one each setting should use.
 | Secrets manager (AWS Secrets Manager, Vault, Doppler) | Rotation and auditing. Worth it with many services or people. |
 
 ## 7. Common mistakes
-- **A default for the secret key**, e.g. `os.environ.get('KEY', 'dev-key')`. Production silently runs
-  with the public default.
+- **A default for the secret key that also applies in production**, e.g. `os.environ.get('KEY', 'dev-key')`.
+  Production silently runs with the public default. Our fallback is only allowed when DEBUG is on.
 - **`DEBUG = os.environ.get('DEBUG', True)`.** Any non-empty string, even `"False"`, is truthy.
 - **Deleting a leaked secret from git history and calling it fixed.** Clones and forks keep it.
   **Change it** (generate a new one) instead.

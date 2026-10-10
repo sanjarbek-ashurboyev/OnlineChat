@@ -1,6 +1,6 @@
 # Progress
 
-*Updated: 2026-10-10 (session 005).*
+*Updated: 2026-10-10 (session 006).*
 
 **Status words:** **Done** = code written, tests or checks run and passing, committed.
 **Partial** = some of the acceptance criteria are met. **Blocked** = waiting on something outside
@@ -10,50 +10,56 @@ our control. **Planned** = not started. Code that's written but not verified is 
 
 **Stage 0: critical security and correctness fixes**, from
 [docs/scaling/02-plan.md](../scaling/02-plan.md). The suggested order is in
-[docs/scaling/README.md](../scaling/README.md#start-here-this-week):
-T-01 → T-08 → T-11 → T-02/T-03/T-04 → T-09 → baseline load test.
+[docs/scaling/README.md](../scaling/README.md#start-here-this-week). The
+[audit's status update](../scaling/01-audit.md#status-update--2026-10-10) shows which findings
+were already fixed on `main` before this journal started.
 
 ## Milestones
 
 | Milestone | Status | Evidence | Where |
 |---|---|---|---|
-| Audit, load test tooling, scaling plan | **Done** | Load test ran: 100 online healthy, 200 failed | `main` `4de99ca` |
-| T-01 Settings from env, new secret key | **Done on branch**, not merged | 3/3 tests pass; `check --deploy` security warnings cleared; missing key fails loudly | `t-01-settings-from-env` `68468d0`. The rebased commit's push to GitHub isn't confirmed. |
-| T-08 Complete, pinned dependencies | **Partial** | Fresh venv installs and passes checks; `pip-audit` clean | Uncommitted on `t-08-pinned-deps`. The `pip-audit`-in-CI step waits for T-11. |
-| Learning journal | **Partial** | This structure created | Uncommitted, currently in the `t-08-pinned-deps` working tree |
-| Point `origin` at the moved repository | **Blocked** (needs you) | Claude Code's auto mode refused to change the remote | Run `git remote set-url origin https://github.com/sanjarbek-ashurboyev/OnlineChat.git` |
-| T-11 Tests + CI | Planned | | |
+| Secrets/`DEBUG`/hosts from env, deps added, 48 tests + CI (work you did before this journal) | **Done** | CI on GitHub; 48 tests pass locally | `main` `763c9da`…`d00f461` (PR #5) |
+| Audit, load test tooling, scaling plan | **Done** | Load test ran: 100 online healthy, 200 failed | `main` `5dabc8b` |
+| Learning journal + `CLAUDE.md` | **Done**, kept up to date every task | Links checked | `main` `dff074f` and later |
+| T-01 Production HTTPS settings, forged-token tests, `check --deploy` in CI | **Done on branch**, PR not opened yet | 50/50 tests; deploy check passes with a strong key and fails with a weak one | `t-01-settings-from-env` `9d3ef86` (pushed) |
+| T-08 Complete pinned deps, `pip-audit` in CI | **Done on branch**, PR not opened yet | Fresh Python 3.13 venv: 48/48 tests, `pip-audit` clean, Ruff clean | `t-08-pinned-deps` `ec6f48e` (pushed) |
+| T-11 Tests + CI | **Partial** (mostly done in PR #5) | 48 tests, CI | Still to do: refresh-token test, Postgres/Redis in CI, gitleaks |
 | T-02, T-03, T-04 | Planned | | |
 | T-09 Gap fetch + reconnect jitter | Planned | | |
 | Baseline load test (realistic profile, second machine) | Planned | | |
+
+**Merge order:** T-01 and T-08 both edit `.github/workflows/tests.yml`, at different steps. Merge
+one PR, then update the other branch from `main` before merging it.
 
 ## Verified so far
 
 | What | How | Result |
 |---|---|---|
-| Django config is valid | `manage.py check` | No issues (main, T-01, T-08) |
-| No model changes missing a migration | `makemigrations --check --dry-run` | No changes |
-| Tokens signed with another key are rejected | `accounts/tests.py` (T-01 branch) | Pass |
-| Production settings | `check --deploy` with production env vars | Only W005/W021 (deliberate) and drf-spectacular schema warnings remain |
-| Fresh install works | New venv + `pip install -r requirements.txt` | Imports OK, ASGI app loads, uses psycopg 3 |
+| Test suite | `make test` (`manage.py test --settings=root.settings_test`) | 48 on `main`, 50 on the T-01 branch, all pass |
+| Lint | `ruff check .` (version 0.16.10, as in CI) | Clean |
+| No model changes missing a migration | `makemigrations --check --dry-run --settings=root.settings_test` | No changes |
+| Tokens signed with another key are rejected | `SigningKeyTests` (T-01 branch) | Pass |
+| Production security settings | `check --deploy --tag security --fail-level WARNING` with production env | Passes; W005/W021 silenced deliberately |
+| Fresh install works | New Python 3.13 venv + `pip install -r requirements.txt` (T-08 branch) | Tests pass, psycopg 3 in use |
 | No known vulnerable versions | `pip-audit -r requirements.txt` | None found (2026-10-10) |
 
 ## Known issues (open)
 
-See the [audit](../scaling/01-audit.md) for details. The most important still-open items:
+See the [audit](../scaling/01-audit.md) and its status update. The most important still-open items:
 - **SEC-3/4/5:** no rate limits on login, registration, messages or user lookup by id (T-03, T-04).
+  The message *size* is now capped.
 - **COR-1:** messages that arrive during a reconnect never show in the open chat (T-09).
 - **COR-2:** a failed `group_discard` skips "mark offline" (T-02).
+- **COR-3:** a JSON array or a numeric `text` still crashes the consumer (T-04).
 - **PERF-1/2/3:** one DB thread per process, plus a new DB connection per call (Stage 1).
-- **OPS-1/2:** no tests on `main`, no CI (T-11).
-- Your local `.venv` still has `psycopg2-binary`, `django-filter`, `Markdown` and psycopg 3.3.5.
-  Sync it with `pip install -r requirements.txt` and uninstall those three.
+- Your local `.venv` still has extra packages. After T-08 merges, run `pip install -r requirements.txt`
+  and uninstall `psycopg2-binary`, `django-filter` and `Markdown`.
+- The branch `loadtest-and-scaling-docs` on GitHub is stale: its content is on `main` now, so it can be deleted.
 
 ## Documentation backlog
 
-- None outstanding. Session 001 was written after the fact from the scaling docs and the
-  previous session's summary, because the journal didn't exist yet. Treat its details
-  as less certain than the later sessions.
+- None outstanding. Session 001 was written after the fact (see its note). Sessions 003 and 004
+  describe the first versions of T-01 and T-08; session 006 explains how they were redone.
 
 ---
 

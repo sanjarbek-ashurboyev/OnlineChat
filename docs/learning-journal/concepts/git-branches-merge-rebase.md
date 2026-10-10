@@ -37,9 +37,11 @@ git push --force-with-lease origin t-01-settings-from-env
 
 ## 5. In our project
 - **Branches so far:**
-  - `loadtest-and-scaling-docs`: merged into `main` by fast-forward.
-  - `t-01-settings-from-env`: rebased onto `main`; commit `09cce5a` became `68468d0`.
-  - `t-08-pinned-deps`: branched from `main`.
+  - `loadtest-and-scaling-docs`: its commits were rebased onto GitHub's `main`; the branch is stale now.
+  - `t-01-settings-from-env`: rebuilt from the current `main` (`9d3ef86`) and pushed with `--force-with-lease`.
+  - `t-08-pinned-deps`: rebuilt from the current `main` (`ec6f48e`).
+- **The big lesson ([P-09](../problems-and-solutions.md#p-09--local-main-was-five-commits-behind-github)):**
+  the local `main` was 5 commits behind GitHub for this whole time. Always `git fetch` before starting.
 - **Convention:** one branch per task, named `t-NN-short-name`
   ([decision 003](../decisions/003-one-branch-per-task.md)).
 - **Remote:** `origin` should be `https://github.com/sanjarbek-ashurboyev/OnlineChat.git`
@@ -51,6 +53,8 @@ git push --force-with-lease origin t-01-settings-from-env
 - **Committing straight to `main`:** fine alone on a toy project. Here it'd make reviews and rollbacks harder.
 
 ## 7. Common mistakes
+- **Starting work without `git fetch`.** Your `main` may be days behind GitHub's. Check
+  `git status -sb` after fetching: `behind N` means pull first.
 - **Rebasing a branch others are working on.** You rewrite their history. Rebase only your own branches.
 - **A plain forced push instead of `--force-with-lease`.**
 - **`git add .`**, which picks up caches, `.env` or token files. Stage explicit paths and read `git status`.

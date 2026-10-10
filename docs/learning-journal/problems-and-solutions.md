@@ -23,7 +23,7 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
 - **Observed:** the push succeeded, but GitHub printed `This repository moved. Please use the new location: https://github.com/sanjarbek-ashurboyev/OnlineChat.git`.
 - **Root cause (Confirmed):** the repository was renamed or transferred. GitHub redirects the old
   URL, but the local remote `origin` still pointed at `uzbillionaire/OnlineChat`.
-- **Fix:** `git remote set-url origin https://github.com/sanjarbek-ashurboyev/OnlineChat.git`. Still **open**: see P-03.
+- **Fix:** `git remote set-url origin https://github.com/sanjarbek-ashurboyev/OnlineChat.git`. **Resolved** 2026-10-10 (session 006).
 - **Lesson:** redirects are a convenience, not a guarantee. If someone creates a new repository
   at the old name, pushes would go there.
 
@@ -34,7 +34,9 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   `git commit && git push` was denied ("Out-of-Place Publication").
 - **Root cause:** a safety classifier stops the AI from changing where code is published.
   *Hypothesis* for the second denial: the push target was the old, redirected URL from P-02.
-- **Fix:** split the work. The local commit ran on its own; you run the remote change and the push yourself.
+- **Fix:** split the work, so the local commit ran on its own. Later you added the allow rules
+  `Bash(git push:*)` and `Bash(git remote set-url:*)` to `.claude/settings.local.json` yourself. The AI
+  isn't allowed to add rules to its own permissions ("Self-Modification"), which is correct. **Resolved.**
 - **Lesson:** separate local actions (commit) from outward ones (push, changing the remote).
   Outward actions deserve a human check.
 
@@ -67,7 +69,8 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
 - **Session:** [003](sessions/003-t01-settings-from-environment.md)
 - **Observed:** `origin/t-01-settings-from-env` pointed at `09cce5a`, the local branch at `68468d0`.
 - **Root cause (Confirmed):** the branch had been pushed before the rebase, and a rebase creates new commits.
-- **Fix:** `git push --force-with-lease origin t-01-settings-from-env`, run by you. Not confirmed yet.
+- **Fix:** you pushed the rebased branch yourself. In session 006 the branch was rebuilt again and pushed
+  with `--force-with-lease=t-01-settings-from-env:68468d0`. That only overwrites if GitHub still has `68468d0`. **Resolved.**
 - **Lesson:** rebase before you push, or accept a force push. Only use `--force-with-lease`, never plain `--force`.
 
 ## P-07 · Development and a fresh install would use different Postgres drivers
@@ -97,3 +100,44 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   T-12 will confirm the cause with a profiler.
 - **Lesson:** measure first. The cheap fix (reusing connections) beats the expensive one
   (rewriting in FastAPI).
+
+## P-09 · Local `main` was five commits behind GitHub
+
+- **Session:** [006](sessions/006-syncing-with-github.md)
+- **Observed:** before the first push of `main`, `git fetch` showed `main [origin/main: ahead 2, behind 5]`.
+  GitHub had commits from 2026-10-06 to 10-08 (PR #5) that the local copy never pulled: secrets from env,
+  dependencies, 48 tests, CI, the message length cap, and the avatars removed from git.
+- **Expected:** the local `main` matches GitHub before any work starts.
+- **Root cause (Confirmed):** the local clone was never updated after that work landed on GitHub.
+  `origin` also pointed at the old repository address, so nothing showed the difference. Every git
+  command we ran (`status`, `log`) only looks at local data until you `fetch`.
+- **Consequences:** the audit, T-01 and T-08 were built on stale code. Part of T-01 and T-08, and most
+  of T-11, were already done.
+- **How we found it:** `git fetch`, then `git branch -vv`, which shows ahead/behind counts, then
+  `git diff --stat` between the two versions.
+- **What didn't work:** pushing would have been rejected (non-fast-forward). A forced push would have
+  **deleted PR #5's work** from GitHub. Neither was tried.
+- **Fix:**
+  1. Rebased our docs and journal commits onto `origin/main`. Only `.gitignore` conflicted; both versions were combined.
+  2. Rebuilt T-01 and T-08 as small additions on top of the existing work, instead of replacing it.
+  3. Added a status update to the audit.
+- **Verified:** 48 tests and Ruff pass on the new `main`, `main` pushed as a normal fast-forward,
+  and both branches pushed after their tests passed.
+- **Lesson:** run `git fetch` (or `git pull`) **before** you start, and read `ahead/behind` in
+  `git status -sb`. An audit is only as current as the commit it was run on, so write that commit down,
+  as `01-audit.md` did. That's how we could tell exactly what had changed.
+
+## P-10 · 39 tests failed after adding the HTTPS settings
+
+- **Session:** [006](sessions/006-syncing-with-github.md)
+- **Observed:** after adding the `if not DEBUG:` block to `settings.py`, `make test` gave `FAILED (failures=29, errors=10)`.
+- **Expected:** all 48 pass. We predicted this failure *before* running the tests.
+- **Root cause (Confirmed):** `root/settings_test.py` imports the main settings with `DJANGO_DEBUG` unset,
+  so DEBUG is off and `SECURE_SSL_REDIRECT = True`. Django's test client sends plain HTTP, so every
+  request got a **301 redirect** to `https://` instead of the real response.
+- **Fix:** `SECURE_SSL_REDIRECT = False` in `root/settings_test.py`, with a comment explaining why.
+  The other production settings (secure cookies, HSTS) stay on in tests, so tests run close to production.
+- **Verified:** 48/48 tests pass, plus the 2 new ones.
+- **Lesson:** when you change settings, think about *every* settings file that imports them. Test settings
+  usually inherit production behaviour. That's good, until something like a redirect breaks the test client.
+

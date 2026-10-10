@@ -22,6 +22,7 @@ It follows the real repository: file names, commands and results are the actual 
 3. [003 · T-01: secret key and settings from the environment](sessions/003-t01-settings-from-environment.md)
 4. [004 · T-08: complete, pinned dependencies](sessions/004-t08-pinned-dependencies.md)
 5. [005 · Setting up this learning journal](sessions/005-learning-journal-setup.md)
+6. [006 · Syncing with GitHub, and redoing T-01 and T-08](sessions/006-syncing-with-github.md)
 
 ## How to use it to learn
 

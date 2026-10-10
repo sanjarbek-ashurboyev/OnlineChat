@@ -1,5 +1,10 @@
 # 003 · T-01: secret key and settings from the environment
 
+> **Superseded in part (2026-10-10):** this describes the *first* version of T-01, built on a stale
+> `main`. GitHub already had its own env-based settings. T-01 was redone as a smaller addition on top:
+> see [session 006](006-syncing-with-github.md). The concepts and review questions here still apply;
+> the code excerpts with `== '1'` and `env_list()` don't match the current code.
+
 - **Date:** 2026-10-10 · **Phase:** Stage 0, critical security
 - **Task:** T-01 (fixes SEC-1, SEC-2, OPS-7 in the [audit](../../scaling/01-audit.md))
 - **Branch / commit:** `t-01-settings-from-env`, `68468d0` (originally `09cce5a`, before the rebase)
