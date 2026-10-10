@@ -19,6 +19,21 @@ if not SECRET_KEY:
     SECRET_KEY = 'django-insecure-local-development-only'
 
 ALLOWED_HOSTS = [h.strip() for h in os.environ.get('DJANGO_ALLOWED_HOSTS', '').split(',') if h.strip()]
+CSRF_TRUSTED_ORIGINS = [o.strip() for o in os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS', '').split(',')
+                        if o.strip()]
+
+if not DEBUG:
+    # TLS ends at the reverse proxy, which must set X-Forwarded-Proto.
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_SSL_REDIRECT = os.environ.get('DJANGO_SSL_REDIRECT', 'True') == 'True'
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    # Start short and raise once HTTPS is known to work: browsers cache HSTS.
+    SECURE_HSTS_SECONDS = int(os.environ.get('DJANGO_HSTS_SECONDS', '3600'))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = os.environ.get('DJANGO_HSTS_INCLUDE_SUBDOMAINS') == 'True'
+    SECURE_HSTS_PRELOAD = os.environ.get('DJANGO_HSTS_PRELOAD') == 'True'
+    # Off by choice until every subdomain is HTTPS-only; check --deploy would otherwise flag them.
+    SILENCED_SYSTEM_CHECKS = ['security.W005', 'security.W021']
 
 
 

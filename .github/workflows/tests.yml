@@ -29,3 +29,13 @@ jobs:
       - run: python manage.py test --settings=root.settings_test --verbosity 2
       - name: Migrations are up to date
         run: python manage.py makemigrations --check --dry-run --settings=root.settings_test
+      - name: Production settings pass Django's security checks
+        env:
+          DJANGO_DEBUG: "False"
+          DJANGO_SECRET_KEY: ci-only-${{ github.run_id }}-not-a-real-secret-but-long-enough-for-w009
+          DJANGO_ALLOWED_HOSTS: chat.example.com
+          DJANGO_CSRF_TRUSTED_ORIGINS: https://chat.example.com
+          DB_NAME: unused
+          DB_USER: unused
+          DB_PASSWORD: unused
+        run: python manage.py check --deploy --tag security --fail-level WARNING

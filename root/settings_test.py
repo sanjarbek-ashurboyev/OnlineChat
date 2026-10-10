@@ -22,5 +22,8 @@ CACHES = {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'
 # The WebSocket origin check compares against this.
 ALLOWED_HOSTS = ['localhost']
 
+# DEBUG is off here, so production's HTTPS redirect is on; the test client speaks plain HTTP.
+SECURE_SSL_REDIRECT = False
+
 # Fast hashing: the suite creates many users.
 PASSWORD_HASHERS = ['django.contrib.auth.hashers.MD5PasswordHasher']
