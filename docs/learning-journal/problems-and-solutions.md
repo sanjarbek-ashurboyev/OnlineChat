@@ -255,3 +255,27 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
 - **Lesson:** in Channels, refuse a socket by accepting and then closing, when the client needs to know *why*.
   Test that the close comes *after* the handshake, not just that a code exists: Channels' test client reports the
   code either way.
+
+## P-17 · Every quiet WebSocket crashed after 5 seconds (redis-py 8)
+
+- **Session:** [012](sessions/012-redis-socket-timeout.md)
+- **Observed:** during the T-09 browser check, the server log showed `Exception inside application: Timeout reading
+  from localhost:6379`. The first server run had 4 sockets and 3 crashes. Each crash skipped `disconnect()`, so its
+  presence entry stayed in Redis. After 5 leftovers, the 5-socket cap (T-04) refused the user: 142 connects in about 2 minutes.
+- **Root cause (Confirmed, by reproduction and library source):**
+  1. channels-redis waits for a socket's next message with `BZPOPMIN key 5` (`brpop_timeout = 5`,
+     `channels_redis/core.py:104`): "block up to 5 s on the server".
+  2. redis-py 8 added a default `socket_timeout` of 5 s (`redis/_defaults.py:7`). redis-py 7 had none.
+  3. The client gives up at 5.0 s, just before the server's 5 s reply arrives, and raises `TimeoutError`. The
+     exception escapes the consumer, which dies.
+  4. Reproduced outside Django: a 5 s `bzpopmin` on an empty key raised `TimeoutError` at 5.01 s, 3 times out of 3,
+     with default settings, and returned normally with `socket_timeout=None`.
+  5. We got redis-py 8 from a Dependabot PR (`redis==7.4.1` → `8.1.0`) merged on 2026-10-10.
+- **Why CI missed it:** the SQLite job uses the in-memory channel layer. The Postgres + Redis job never left a
+  socket quiet for 5 s.
+- **Fix:** give the channel layer's connection `socket_timeout: 10` in `CHANNEL_LAYERS`, so reads outlast the 5 s
+  wait. New test `chats/test_channel_layer.py`: a quiet channel must not raise a Redis error. It failed first
+  (`redis.exceptions.TimeoutError` at 5.02 s), and passes now.
+- **Not fixed here:** a consumer that crashes still leaks its presence entry until the 90 s TTL expires.
+- **Lesson:** a dependency's *default* can change in a major version, even when your code doesn't. Read the
+  changelog of a major bump, and test long-lived connections *idle*, not only busy.
