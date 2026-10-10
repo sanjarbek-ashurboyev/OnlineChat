@@ -238,6 +238,24 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
 - **Lesson:** with auto-merge on, a PR can close at any moment after its checks pass. Before pushing to a PR
   branch, run `gh pr view N --json state`. If it says `MERGED`, put the change on a new branch from `main`.
 
+## P-16 · Our WebSocket close codes never reached the browser (COR-5)
+
+- **Session:** [011](sessions/011-t09-gap-fetch-and-jitter.md)
+- **Observed:** the client has a branch for close code 4401 ("token expired: refresh, then reconnect"), and T-04
+  added 4429 ("too many sockets"). The audit suspected browsers never see these codes.
+- **Root cause (Confirmed, Daphne source and a test):** the consumer called `close(code=...)` **before**
+  `accept()`. In `daphne/ws_protocol.py:191-195`, a `websocket.close` that arrives while the socket is still
+  connecting calls `serverReject()`: an HTTP 403, with no close code. A browser reports that as 1006. Only after
+  `accept()` does a close carry our code (`serverClose(code=...)`). The new `refused()` test helper failed with
+  "refused before the handshake" for both 4401 and 4429.
+- **Fix:** `InboxConsumer.refuse(code)` accepts, then closes. A frame that slips in between is ignored
+  (`self.refused`), and a test covers that too.
+- **Side effect found in review:** now that 4401 really arrives, the client's "refresh, then reconnect at once"
+  branch can run. If the server kept refusing, that would be a tight loop, so it goes through the jittered backoff too.
+- **Lesson:** in Channels, refuse a socket by accepting and then closing, when the client needs to know *why*.
+  Test that the close comes *after* the handshake, not just that a code exists: Channels' test client reports the
+  code either way.
+
 ## P-17 · Every quiet WebSocket crashed after 5 seconds (redis-py 8)
 
 - **Session:** [012](sessions/012-redis-socket-timeout.md)

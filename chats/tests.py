@@ -152,6 +152,21 @@ class MessageTests(FakePresenceMixin, TestCase):
     def test_blank_messages_are_rejected(self, broadcast):
         self.assertEqual(self.send('   ').status_code, 400)
 
+    def test_after_returns_only_newer_messages_oldest_first(self, broadcast):
+        # COR-1: how a reconnecting client fetches what the socket missed.
+        seen = say(self.chat, self.friend, 'seen', minutes_ago=3)
+        say(self.chat, self.friend, 'missed 1', minutes_ago=2)
+        say(self.chat, self.me, 'missed 2', minutes_ago=1)
+
+        data = client_for(self.me).get(self.url, {'after': seen.id}).data
+        self.assertEqual([m['text'] for m in data['results']], ['missed 1', 'missed 2'])
+        self.assertIsNone(data['next'])
+
+    def test_after_must_be_a_whole_number(self, broadcast):
+        for bad in ('abc', '-1', '1.5', ''):
+            with self.subTest(after=bad):
+                self.assertEqual(client_for(self.me).get(self.url, {'after': bad}).status_code, 400)
+
 
 class MarkReadTests(FakePresenceMixin, TestCase):
     def setUp(self):

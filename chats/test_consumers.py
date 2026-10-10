@@ -39,6 +39,21 @@ class InboxSocketTestCase(FakePresenceMixin, TransactionTestCase):
         self.assertEqual(await socket.receive_json_from(), {'type': 'pong'})
         return socket
 
+    async def refused(self, user=None, token=None):
+        """Open a socket the server should accept and then close at once; return the close code.
+
+        Accepting first is what lets a browser see our code. A close before accept is an
+        HTTP 403, and the browser only reports 1006 (COR-5).
+        """
+        token = token_for(user) if user is not None else token
+        socket = WebsocketCommunicator(application, f'/ws/inbox/?token={token}', headers=ALLOWED_ORIGIN)
+        connected, _ = await socket.connect()
+        self.assertTrue(connected, 'refused before the handshake: a browser would see 1006')
+        output = await socket.receive_output()
+        await socket.disconnect()
+        self.assertEqual(output['type'], 'websocket.close')
+        return output.get('code')
+
     async def close_all(self):
         for socket in self.sockets:
             await socket.disconnect()
@@ -59,7 +74,17 @@ class ConnectionTests(InboxSocketTestCase):
     async def test_missing_or_invalid_tokens_are_refused(self):
         for token in ('', 'not-a-jwt'):
             with self.subTest(token=token):
-                self.assertEqual(await self.open(token=token), CLOSE_UNAUTHENTICATED)
+                self.assertEqual(await self.refused(token=token), CLOSE_UNAUTHENTICATED)
+
+    async def test_a_frame_sent_to_a_refused_socket_is_ignored(self):
+        # Between accept and close, a client can still get a frame in.
+        socket = WebsocketCommunicator(application, '/ws/inbox/?token=', headers=ALLOWED_ORIGIN)
+        await socket.connect()
+        await socket.send_json_to({'action': 'ping'})
+
+        self.assertEqual((await socket.receive_output())['type'], 'websocket.close')
+        self.assertTrue(await socket.receive_nothing(), 'no reply, and no crash')
+        await socket.disconnect()
 
     async def test_other_websites_cannot_open_the_socket(self):
         # Stops a malicious page from using a visitor's token from its own origin.
@@ -194,6 +219,40 @@ class MessagingTests(InboxSocketTestCase):
         self.assertFalse(await database_sync_to_async(Message.objects.exists)())
         await self.close_all()
 
+    async def test_messages_missed_while_disconnected_can_be_fetched_after_reconnecting(self):
+        # COR-1: the channel layer doesn't replay, so the client asks the API for the gap.
+        alice, bob = await self.open(self.alice), await self.open(self.bob)
+        await alice.send_json_to({'chat_id': self.chat.id, 'text': 'before'})
+        last_seen = (await bob.receive_json_from())['id']
+        await alice.receive_json_from()
+
+        await bob.disconnect()
+        self.sockets.remove(bob)
+        for n in range(3):
+            await alice.send_json_to({'chat_id': self.chat.id, 'text': f'missed {n}'})
+            await alice.receive_json_from()
+
+        bob = await self.open(self.bob)
+        self.assertTrue(await bob.receive_nothing(), 'the socket does not replay')
+        response = await database_sync_to_async(client_for(self.bob).get)(
+            f'/api/v1/chats/{self.chat.id}/messages/', {'after': last_seen})
+
+        texts = [m['text'] for m in response.data['results']]
+        self.assertEqual(texts, ['missed 0', 'missed 1', 'missed 2'])
+        await self.close_all()
+
+    async def test_a_message_sent_over_rest_reaches_open_sockets(self):
+        bob = await self.open(self.bob)
+
+        response = await database_sync_to_async(client_for(self.alice).post)(
+            f'/api/v1/chats/{self.chat.id}/messages/', {'text': 'via REST'},
+        )
+
+        self.assertEqual(response.status_code, 201)
+        event = await bob.receive_json_from()
+        self.assertEqual((event['type'], event['text']), ('message', 'via REST'))
+        await self.close_all()
+
 
 class RateLimitTests(InboxSocketTestCase):
     """SEC-5: one socket can't flood the database, and one user can't open unlimited sockets."""
@@ -226,26 +285,13 @@ class RateLimitTests(InboxSocketTestCase):
     async def test_a_user_can_have_at_most_5_sockets(self):
         for _ in range(5):
             await self.open(self.alice)
-        self.assertEqual(await self.open(self.alice), CLOSE_TOO_MANY_SOCKETS)
+        self.assertEqual(await self.refused(self.alice), CLOSE_TOO_MANY_SOCKETS)
         self.assertIsNot(await self.open(self.bob), CLOSE_TOO_MANY_SOCKETS, 'other users are unaffected')
 
         await self.sockets[0].disconnect()
         self.sockets.pop(0)
         self.assertIsNot(await self.open(self.alice), CLOSE_TOO_MANY_SOCKETS, 'a freed slot can be reused')
         await self.close_all()
-
-    async def test_a_message_sent_over_rest_reaches_open_sockets(self):
-        bob = await self.open(self.bob)
-
-        response = await database_sync_to_async(client_for(self.alice).post)(
-            f'/api/v1/chats/{self.chat.id}/messages/', {'text': 'via REST'},
-        )
-
-        self.assertEqual(response.status_code, 201)
-        event = await bob.receive_json_from()
-        self.assertEqual((event['type'], event['text']), ('message', 'via REST'))
-        await self.close_all()
-
 
 class ReadReceiptTests(InboxSocketTestCase):
     async def test_reading_a_chat_marks_it_and_tells_both_sides(self):

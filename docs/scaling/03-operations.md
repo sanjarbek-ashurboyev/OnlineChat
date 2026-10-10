@@ -85,7 +85,7 @@ says which test proves the mitigation works.
 - **Rollback:** raise rates via settings (no code change).
 
 **T-04 · WebSocket input validation, max length, per-socket rate limit** · C · 3–5 h · Next? yes
-- **Status (2026-10-10): done** on `t-04-ws-input-validation` (session 010): type checks, `TokenBucket(rate=1, burst=10)` per socket over every frame, 5 sockets per user (close 4429). Not done: the optional DB `CHECK`.
+- **Status (2026-10-10): done**, merged in PR #19 (session 010): type checks, `TokenBucket(rate=1, burst=10)` per socket over every frame, 5 sockets per user (close 4429). Not done: the optional DB `CHECK`.
 - **Problem:** SEC-5, COR-3.
 - **Files:** `chats/consumers.py:75-118`, `chats/serializers.py` (`max_length` on `text`), `chats/models.py` (optional DB `CHECK (length(text) <= 4000)` via migration).
 - **Steps:**
@@ -126,6 +126,7 @@ says which test proves the mitigation works.
 - **Acceptance:** fresh venv + `pip install -r requirements.txt` + tests pass.
 
 **T-09 · Gap fetch + reconnect jitter** · C · 4–8 h · Next? yes (**foundation for all later deploys**)
+- **Status (2026-10-11): code done** on `t-09-gap-fetch-jitter` (session 011): `?after=<id>` (paginated, oldest first), full jitter, accept-then-close so browsers see 4401/4429 (COR-5 confirmed). Checked in a browser (session 011).
 - See Decision 0.3.
 - **Files:** `chats/views.py` (`?after=`), `assets/app.js` (`onopen`, backoff).
 - **Tests:** reconnect test; COR-5 check.

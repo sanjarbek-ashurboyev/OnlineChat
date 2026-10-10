@@ -1,8 +1,8 @@
 from django.db.models import Count, F, OuterRef, Q, Subquery
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema
-from rest_framework.exceptions import PermissionDenied
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.generics import ListCreateAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -79,6 +79,10 @@ class ChatListCreateAPIView(ListCreateAPIView):
 
 
 @extend_schema(tags=['chats'])
+@extend_schema_view(get=extend_schema(parameters=[
+    OpenApiParameter('after', int, description='Only messages with a larger id, oldest first. '
+                     'Used after a reconnect to fetch what the socket missed.'),
+]))
 class MessageListCreateAPIView(ListCreateAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = MessageSerializer
@@ -88,9 +92,21 @@ class MessageListCreateAPIView(ListCreateAPIView):
                                  pk=self.kwargs['chat_id'])
 
     def get_queryset(self):
-        # Newest first, so page 1 is what the chat window actually shows.
-        # The client reverses for display and pages backwards for history.
-        return self.get_chat().messages.order_by('-created_at')
+        messages = self.get_chat().messages
+        after = self.request.query_params.get('after')
+        if after is None:
+            # Newest first, so page 1 is what the chat window actually shows.
+            # The client reverses for display and pages backwards for history.
+            return messages.order_by('-created_at')
+
+        # ?after=<id>: what a reconnecting client missed (COR-1), oldest first.
+        try:
+            after = int(after)
+        except ValueError:
+            after = -1
+        if after < 0:
+            raise ValidationError({'after': 'Must be a message id.'})
+        return messages.filter(id__gt=after).order_by('id')
 
     def perform_create(self, serializer):
         me = self.request.user

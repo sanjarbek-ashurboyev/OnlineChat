@@ -48,6 +48,10 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
 - **Tests whose consumers touch the database must use `TransactionTestCase`.** With `TestCase`, Channels closes
   the test's connection on Postgres. SQLite hides it. → [P-12](docs/learning-journal/problems-and-solutions.md#p-12--websocket-tests-passed-on-sqlite-but-failed-on-postgres)
 - **Green on SQLite is not green on Postgres.** The `test-postgres-redis` CI job is the real check.
+- **After inserting a test class into a file, list `^class|def test_` to check every test is in the class you meant.**
+  A class dropped mid-file silently adopts the tests below it (T-04 did this to two `MessagingTests` tests).
+- **macOS has no `timeout` command.** `timeout 40 cmd` fails with "command not found", so the command never runs.
+  Use Python's `subprocess.run(..., timeout=40)` instead.
 - **"0 tests ran" is not "tests pass".**
 - **Write the failing test first, and watch it fail.** When mocking, also assert the mock was called
   (`assert_awaited_once()`); otherwise the test can pass without testing anything.
@@ -71,6 +75,9 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
 
 - **Cleanup code must not depend on every step succeeding.** A failing `group_discard` used to skip "mark
   offline". Log the failure, then do the important step anyway. → [P-13](docs/learning-journal/problems-and-solutions.md#p-13--a-burst-of-disconnects-left-users-online-cor-2)
+- **In Channels, `close(code)` before `accept()` is an HTTP 403: the browser sees 1006, never your code.** Accept, then
+  close. The test client shows the code either way, so assert the handshake succeeded. → [P-16](docs/learning-journal/problems-and-solutions.md#p-16--our-websocket-close-codes-never-reached-the-browser-cor-5)
+- **The channel layer is at-most-once.** Never treat the live stream as complete: after a reconnect, fetch the gap from Postgres.
 - **A quiet socket is a test case.** redis-py 8's default 5 s socket timeout crashed every idle consumer (channels-redis
   blocks for 5 s). Major bumps can change *defaults*: read the changelog. → [P-17](docs/learning-journal/problems-and-solutions.md#p-17--every-quiet-websocket-crashed-after-5-seconds-redis-py-8)
 - **"Too many connections" can be a client-side pool limit.** redis-py's pool allows 100 per process and raises

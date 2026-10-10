@@ -64,11 +64,11 @@ class InboxConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.user = self.scope['user']
         if not self.user.is_authenticated:
-            await self.close(code=CLOSE_UNAUTHENTICATED)
+            await self.refuse(CLOSE_UNAUTHENTICATED)
             return
         # A soft cap: two sockets connecting at the same moment can both get in.
         if await sync_to_async(presence.socket_count)(self.user.pk) >= MAX_SOCKETS_PER_USER:
-            await self.close(code=CLOSE_TOO_MANY_SOCKETS)
+            await self.refuse(CLOSE_TOO_MANY_SOCKETS)
             return
 
         self.bucket = TokenBucket(rate=FRAMES_PER_SECOND, burst=FRAME_BURST)
@@ -92,7 +92,16 @@ class InboxConsumer(AsyncWebsocketConsumer):
             await sync_to_async(presence.mark_offline)(self.user.pk, self.channel_name)
             await self.touch_last_seen()
 
+    async def refuse(self, code):
+        # Accept, then close. A close before accept is an HTTP 403, and the browser
+        # only sees code 1006, never ours (COR-5).
+        self.refused = True
+        await self.accept()
+        await self.close(code=code)
+
     async def receive(self, text_data=None, bytes_data=None):
+        if getattr(self, 'refused', False):
+            return  # a frame that got in before our close
         # Every frame counts, pings included: each one writes last_seen to the database.
         if not self.bucket.take():
             await self.send_error('Slow down.')
