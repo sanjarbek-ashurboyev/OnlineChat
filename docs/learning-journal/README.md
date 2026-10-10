@@ -27,6 +27,7 @@ It follows the real repository: file names, commands and results are the actual 
 7. [007 · T-11: tests and CI against real services, secret scanning, branch protection](sessions/007-t11-tests-and-ci.md)
 8. [008 · T-02: a socket that closes always marks the user offline](sessions/008-t02-disconnect-marks-offline.md)
 9. [009 · T-03: rate limits on login, registration, refresh, profiles and new chats](sessions/009-t03-throttles.md)
+10. [010 · T-04: WebSocket input checks, a frame limit per socket, at most 5 sockets per user](sessions/010-t04-websocket-input-and-rate-limits.md)
 
 ## How to use it to learn
 

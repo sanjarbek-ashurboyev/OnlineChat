@@ -8,7 +8,7 @@ from channels.testing import WebsocketCommunicator
 from django.test import TransactionTestCase
 from redis.exceptions import MaxConnectionsError
 
-from chats.consumers import CLOSE_UNAUTHENTICATED
+from chats.consumers import CLOSE_TOO_MANY_SOCKETS, CLOSE_UNAUTHENTICATED
 from chats.models import MAX_MESSAGE_LENGTH, Block, Chat, Message
 from root.asgi import application
 from test_helpers import FakePresenceMixin, client_for, make_user, token_for
@@ -173,6 +173,65 @@ class MessagingTests(InboxSocketTestCase):
 
         await alice.send_json_to({'action': 'ping'})
         self.assertEqual(await alice.receive_json_from(), {'type': 'pong'}, 'socket still works')
+        await self.close_all()
+
+    async def test_payloads_of_the_wrong_type_get_an_error_not_a_crash(self):
+        # COR-3: these used to raise AttributeError and drop the socket (close code 1011).
+        alice = await self.open(self.alice)
+
+        for frame in (['a', 'list'], 42, 'a string', None):
+            with self.subTest(frame=frame):
+                await alice.send_json_to(frame)
+                self.assertEqual(await alice.receive_json_from(),
+                                 {'type': 'error', 'detail': 'Expected a JSON object.', 'chat_id': None})
+        for text in (123, ['hi'], {'x': 1}):
+            with self.subTest(text=text):
+                await alice.send_json_to({'chat_id': self.chat.id, 'text': text})
+                self.assertEqual((await alice.receive_json_from())['detail'], 'text must be a string.')
+
+        await alice.send_json_to({'action': 'ping'})
+        self.assertEqual(await alice.receive_json_from(), {'type': 'pong'}, 'socket still works')
+        self.assertFalse(await database_sync_to_async(Message.objects.exists)())
+        await self.close_all()
+
+
+class RateLimitTests(InboxSocketTestCase):
+    """SEC-5: one socket can't flood the database, and one user can't open unlimited sockets."""
+
+    def setUp(self):
+        super().setUp()
+        # Freeze the bucket's clock, so slow CI can't refill it mid-test.
+        self.now = 1000.0
+        patcher = mock.patch('chats.ratelimit.time.monotonic', lambda: self.now)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    async def test_a_burst_of_frames_is_cut_off_but_the_socket_stays_open(self):
+        alice = await self.open(self.alice)  # its ping spent 1 of the 10 tokens
+
+        replies = []
+        for n in range(20):
+            await alice.send_json_to({'chat_id': self.chat.id, 'text': f'spam {n}'})
+            replies.append(await alice.receive_json_from())
+
+        self.assertEqual([r['type'] for r in replies], ['message'] * 9 + ['error'] * 11)
+        self.assertEqual(replies[-1]['detail'], 'Slow down.')
+        self.assertEqual(await database_sync_to_async(Message.objects.count)(), 9)
+
+        self.now += 1  # one second later, one more token
+        await alice.send_json_to({'action': 'ping'})
+        self.assertEqual(await alice.receive_json_from(), {'type': 'pong'})
+        await self.close_all()
+
+    async def test_a_user_can_have_at_most_5_sockets(self):
+        for _ in range(5):
+            await self.open(self.alice)
+        self.assertEqual(await self.open(self.alice), CLOSE_TOO_MANY_SOCKETS)
+        self.assertIsNot(await self.open(self.bob), CLOSE_TOO_MANY_SOCKETS, 'other users are unaffected')
+
+        await self.sockets[0].disconnect()
+        self.sockets.pop(0)
+        self.assertIsNot(await self.open(self.alice), CLOSE_TOO_MANY_SOCKETS, 'a freed slot can be reused')
         await self.close_all()
 
     async def test_a_message_sent_over_rest_reaches_open_sockets(self):

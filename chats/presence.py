@@ -56,6 +56,15 @@ def mark_offline(user_id, channel_name):
         logger.exception('presence: mark_offline failed for user %s', user_id)
 
 
+def socket_count(user_id):
+    """Open sockets for this user. 0 when Redis fails, so connecting still works."""
+    try:
+        return client().scard(key(user_id))
+    except redis.RedisError:
+        logger.exception('presence: socket_count failed for user %s', user_id)
+        return 0
+
+
 def is_online(user_id):
     try:
         return client().scard(key(user_id)) > 0

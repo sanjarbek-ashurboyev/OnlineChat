@@ -224,3 +224,16 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
 - **Lesson:** before removing a Dependabot config entry, close the PRs it created. When two PRs duplicate each
   other, keep the one from the entry that stays. Closing a Dependabot PR is not neutral: it skips that version.
 
+
+## P-15 · A commit pushed to a PR after auto-merge never reached `main`
+
+- **Session:** [010](sessions/010-t04-websocket-input-and-rate-limits.md)
+- **Observed:** I pushed a second commit (a fix to the `progress.md` learning tracker) to the T-03 branch and
+  reported "PR #18 passed all 4 checks again". When asked to merge, `gh pr merge 18` answered *"was already
+  merged"*. The merged head was `df0691e`, the first commit. The fix `02337ea` was on the branch, but not on `main`.
+- **Root cause (Confirmed, from timestamps):** auto-merge was on for PR #18. It merged at 18:42:21, as soon as the
+  first commit's checks passed. My push came later, onto a branch whose PR was already closed. The "green checks"
+  I read were for that orphaned commit, which no open PR contained.
+- **Fix:** cherry-picked the commit onto the next branch (`t-04-ws-input-validation`), so it ships with the T-04 PR.
+- **Lesson:** with auto-merge on, a PR can close at any moment after its checks pass. Before pushing to a PR
+  branch, run `gh pr view N --json state`. If it says `MERGED`, put the change on a new branch from `main`.
