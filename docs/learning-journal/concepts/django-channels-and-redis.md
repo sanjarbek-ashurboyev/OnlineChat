@@ -61,10 +61,14 @@ class EchoConsumer(AsyncWebsocketConsumer):
 - **Redis has three jobs here, in separate databases:**
   - **db 0, channel layer:** message delivery between consumers.
   - **db 1, Django cache:** counters for the rate limit.
-  - **db 2, presence:** `chats/presence.py` keeps a Redis **set** per user (`presence:<id>`) holding
-    the channel names of their open sockets. The set has a **TTL** (time to live) of 90 s, and each
-    30 s ping renews it. A user is online while the set isn't empty. If a server crashes, its
-    entries expire by themselves.
+  - **db 2, presence:** `chats/presence.py` keeps a Redis **sorted set** per user (`online:<id>`).
+    Each member is one open socket's channel name, and its **score** is the time of that socket's last
+    ping (every 30 s). A socket counts while its score is less than 90 s old, so a user is online
+    while at least one socket counts. An entry left behind by a crashed consumer or a killed process
+    stops pinging and ages out *on its own*, even while the user's other tabs keep pinging. The key
+    also has a 90 s TTL (time to live), which removes users who have gone quiet altogether.
+    (Until the presence-leak fix this was a plain set with one TTL for the whole user, see
+    [P-18](../problems-and-solutions.md#p-18--leftover-presence-entries-lived-as-long-as-any-other-tab).)
 
 ## 6. Alternatives
 - **No channel layer, a single process:** consumers could share a Python dict. That breaks as soon
@@ -84,6 +88,8 @@ class EchoConsumer(AsyncWebsocketConsumer):
   ([P-13](../problems-and-solutions.md#p-13--a-burst-of-disconnects-left-users-online-cor-2)).
 - **Assuming "too many connections" means the Redis server is full.** Here it was the client-side pool:
   redis-py's `ConnectionPool` allows 100 connections per process by default, and raises instead of waiting.
+- **One expiry for a whole group of items.** If *any* member's activity renews the shared TTL, a dead
+  member never expires. Give each item its own timestamp (a sorted set) and count only recent ones.
 - **Forgetting `type` → method naming.** `'chat.message'` calls `chat_message`. A typo means the
   event is silently ignored, or raises an error.
 

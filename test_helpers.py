@@ -30,19 +30,36 @@ def token_for(user):
 
 
 class FakeRedis:
-    """The few set commands chats.presence uses, backed by a dict."""
+    """The few commands chats.presence uses, backed by dicts."""
 
     def __init__(self):
-        self.sets = {}
+        self.zsets = {}
 
-    def sadd(self, key, member):
-        self.sets.setdefault(key, set()).add(member)
+    def zadd(self, key, mapping):
+        self.zsets.setdefault(key, {}).update(mapping)
 
-    def srem(self, key, member):
-        self.sets.get(key, set()).discard(member)
+    def zrem(self, key, *members):
+        for member in members:
+            self.zsets.get(key, {}).pop(member, None)
 
-    def scard(self, key):
-        return len(self.sets.get(key, ()))
+    @staticmethod
+    def _in_range(score, low, high):
+        """Redis score ranges: inclusive, or exclusive with a '(' prefix; '-inf'/'+inf' allowed."""
+        def bound(value):
+            value = str(value)
+            return (value[1:], True) if value.startswith('(') else (value, False)
+        (low, low_open), (high, high_open) = bound(low), bound(high)
+        above = score > float(low) if low_open else score >= float(low)
+        below = score < float(high) if high_open else score <= float(high)
+        return above and below
+
+    def zcount(self, key, low, high):
+        return sum(self._in_range(s, low, high) for s in self.zsets.get(key, {}).values())
+
+    def zremrangebyscore(self, key, low, high):
+        scores = self.zsets.get(key, {})
+        for member in [m for m, s in scores.items() if self._in_range(s, low, high)]:
+            del scores[member]
 
     def expire(self, key, seconds):
         pass

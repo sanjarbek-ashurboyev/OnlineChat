@@ -10,6 +10,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import AccessToken
 
 from accounts.models import User
+from chats import presence
 from chats.models import Block
 from test_helpers import (
     PASSWORD,
@@ -220,7 +221,7 @@ class PublicUserTests(FakePresenceMixin, TestCase):
 
     def test_shows_whether_the_user_is_online(self):
         self.assertFalse(client_for(self.me).get(self.url()).data['is_online'])
-        self.redis.sadd(f'presence:{self.other.id}', 'some-channel')
+        presence.mark_online(self.other.id, 'some-channel')
         self.assertTrue(client_for(self.me).get(self.url()).data['is_online'])
 
     def test_someone_who_blocked_you_is_hidden(self):

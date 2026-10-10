@@ -6,6 +6,7 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from chats import presence
 from chats.models import MAX_MESSAGE_LENGTH, Block, Chat, Message
 from test_helpers import FakePresenceMixin, client_for, make_user
 
@@ -98,7 +99,7 @@ class ChatListTests(FakePresenceMixin, TestCase):
         self.assertEqual([c['id'] for c in self.chats()], [self.with_colleague.id, self.with_friend.id])
 
     def test_shows_whether_each_person_is_online(self):
-        self.redis.sadd(f'presence:{self.friend.id}', 'some-channel')
+        presence.mark_online(self.friend.id, 'some-channel')
         online = {c['participant']['id']: c['participant']['is_online'] for c in self.chats()}
         self.assertEqual(online, {self.friend.id: True, self.colleague.id: False})
 

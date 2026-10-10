@@ -8,6 +8,7 @@ from channels.testing import WebsocketCommunicator
 from django.test import TransactionTestCase
 from redis.exceptions import MaxConnectionsError
 
+from chats import presence
 from chats.consumers import CLOSE_TOO_MANY_SOCKETS, CLOSE_UNAUTHENTICATED
 from chats.models import MAX_MESSAGE_LENGTH, Block, Chat, Message
 from root.asgi import application
@@ -60,7 +61,7 @@ class InboxSocketTestCase(FakePresenceMixin, TransactionTestCase):
         self.sockets.clear()
 
     def online(self, user):
-        return self.redis.scard(f'presence:{user.id}') > 0
+        return presence.is_online(user.id)
 
 
 class ConnectionTests(InboxSocketTestCase):
@@ -291,6 +292,20 @@ class RateLimitTests(InboxSocketTestCase):
         await self.sockets[0].disconnect()
         self.sockets.pop(0)
         self.assertIsNot(await self.open(self.alice), CLOSE_TOO_MANY_SOCKETS, 'a freed slot can be reused')
+        await self.close_all()
+
+    async def test_entries_left_by_dead_sockets_do_not_lock_the_user_out(self):
+        # 5 sockets that died without disconnect() (crash, killed process) ...
+        clock = [1000.0]
+        with mock.patch('chats.presence.now', lambda: clock[0]):
+            for n in range(5):
+                presence.mark_online(self.alice.id, f'dead-{n}')
+            # ... while another tab keeps pinging, which used to keep them all alive.
+            for _ in range(4):
+                clock[0] += 30
+                presence.refresh(self.alice.id, 'live-tab')
+
+            self.assertIsInstance(await self.open(self.alice), WebsocketCommunicator)
         await self.close_all()
 
 class ReadReceiptTests(InboxSocketTestCase):
