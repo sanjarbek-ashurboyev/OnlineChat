@@ -68,6 +68,25 @@ const delay = Math.random() * Math.min(1000 * 2 ** state.retry++, 15000);
 
 The reconnects spread evenly over the window instead of arriving as a spike.
 
+### Answers that never come (session 021)
+
+A socket can look open while nothing gets through: a laptop wakes from sleep, Wi-Fi changes, a proxy
+drops the connection silently. And the channel layer can drop one notification, such as our own echo.
+Two deadlines cover both:
+
+- **Liveness:** every 30 s the page pings. If no frame at all arrived for 30 s + 10 s, the connection is
+  treated as dead: close it and reconnect (through the jittered backoff).
+- **Acknowledgement timeout:** a sent message waits for its echo for 10 s at most. Then the page asks the
+  history whether it was saved: if yes, it shows it and clears the composer; if not, it keeps the text and
+  says the message may not have been sent. Before, one lost echo blocked every later send.
+
+### Sessions in the browser (session 021)
+
+A request or timer started before logout can finish after it. `state.session` is a number that `logout()`
+bumps; `api()` and `refreshAccess()` remember it when they start, and an answer for an older session is
+**dropped**: it returns a promise that never settles, so the caller's next step (draw the chats, save
+the tokens) never runs.
+
 ## 6. Alternatives
 
 | Option | How | Why not now |
@@ -82,6 +101,11 @@ The reconnects spread evenly over the window instead of arriving as a spike.
 - **Using a timestamp as the cursor.** Equal timestamps get skipped or repeated. Use a growing id.
 - **Forgetting to de-duplicate.** A message can arrive by socket *and* by fetch.
 - **Reconnecting without jitter.** Every deploy becomes a self-inflicted load spike.
+- **Waiting forever for an answer.** Every "wait for X" needs a deadline and a plan for when it passes.
+- **Letting work from before logout finish after it.** It can sign the old user back in or show their chats
+  to the next one. Tag async work with a session and drop stale answers.
+- **Signing out on any error.** A network blip isn't a refused token. Sign out only when the server says
+  the credentials are bad (401 after a failed refresh); retry everything else.
 - **Retrying instantly in a special case.** Our "token expired" path used to reconnect immediately. If
   the server kept refusing, that would be a tight loop. Every retry should go through the backoff.
 
