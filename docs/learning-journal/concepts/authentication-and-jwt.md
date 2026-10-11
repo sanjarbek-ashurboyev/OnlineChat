@@ -42,6 +42,10 @@ jwt.decode(token, 'wrong-secret', algorithms=['HS256'])    # raises InvalidSigna
   header, and also updates `last_seen` at most once a minute.
 - **WebSocket:** `chats/middleware.py` `user_from_token()` checks `?token=`. A bad token makes the user
   `AnonymousUser`, and the consumer closes with code 4401.
+- **An open socket's rights end with its token** (session 020). The middleware passes the token's `exp`
+  to the consumer, which closes the socket with 4401 at that moment; the browser renews its token and
+  reconnects. A check every 60 s also closes it if the account was disabled
+  ([decision 006](../decisions/006-socket-rights-end-with-the-token.md)).
 - **The signing key is `SECRET_KEY`**, because SimpleJWT's `SIGNING_KEY` defaults to it. That's why the
   committed key was critical: with it, anyone could sign `{"user_id": "1"}` themselves. See
   [session 003](../sessions/003-t01-settings-from-environment.md).
@@ -60,6 +64,8 @@ jwt.decode(token, 'wrong-secret', algorithms=['HS256'])    # raises InvalidSigna
 - **Committing the signing key** (we did; fixed in T-01). Anyone who reads it can be anyone.
 - **Thinking JWT payloads are secret.** They're readable by anyone.
 - **Long-lived access tokens.** Because JWTs can't be revoked, keep them short and refresh them.
+- **Checking a token only when a long-lived connection opens.** A WebSocket can stay open for hours, so its
+  token expires *during* the connection. Until session 020, ours stayed authorized forever.
 - **Confusing authentication with authorization.** A valid token proves who you are. You still have to
   check that *this* user may read *this* chat (`get_chat()` filters by `user1`/`user2`).
 - **Tokens in URLs** end up in server and proxy logs. We accept this for the WebSocket, with mitigations

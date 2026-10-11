@@ -90,6 +90,12 @@ class EchoConsumer(AsyncWebsocketConsumer):
   redis-py's `ConnectionPool` allows 100 connections per process by default, and raises instead of waiting.
 - **One expiry for a whole group of items.** If *any* member's activity renews the shared TTL, a dead
   member never expires. Give each item its own timestamp (a sorted set) and count only recent ones.
+- **Forgetting that group membership expires.** `channels_redis` drops a member after `group_expiry`
+  (24 h by default). A socket open longer stays connected but gets nothing. Ours close after at most 12 h
+  (session 020).
+- **Check-then-act across two Redis calls.** "Count, then add" lets two sockets connecting at once both see
+  4 and both get in (we measured 8 of 8 admitted). Do both in one step: a Lua script runs alone in Redis
+  (`presence.admit`).
 - **Forgetting `type` → method naming.** `'chat.message'` calls `chat_message`. A typo means the
   event is silently ignored, or raises an error.
 

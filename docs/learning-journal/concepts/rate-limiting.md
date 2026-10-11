@@ -108,7 +108,8 @@ Why a bucket and not "10 per minute" like DRF? A bucket allows a natural burst (
 lines quickly) but caps the *sustained* rate at 1 per second. It only needs two numbers and no
 cache, so it costs nothing per frame. The limitation: it lives in the socket's memory, so a
 user with 5 tabs gets 5 buckets. That's why we also cap a user at **5 sockets**, counted
-from the presence set in Redis.
+from the presence set in Redis. The count and the "add me" happen in one Lua script (`presence.admit`), so
+sockets opened at the same moment can't all slip in (session 020).
 
 ## 6. Alternatives
 

@@ -1,5 +1,7 @@
 """The inbox WebSocket, driven through the full ASGI stack: origin check, JWT
 middleware, URL router and consumer, as a browser would reach it."""
+import asyncio
+from datetime import timedelta
 from unittest import mock
 
 from channels.db import database_sync_to_async
@@ -7,8 +9,10 @@ from channels.layers import get_channel_layer
 from channels.testing import WebsocketCommunicator
 from django.test import TransactionTestCase
 from redis.exceptions import MaxConnectionsError
+from rest_framework_simplejwt.tokens import AccessToken
 
-from chats import presence
+from accounts.models import User
+from chats import consumers, presence
 from chats.consumers import CLOSE_TOO_MANY_SOCKETS, CLOSE_UNAUTHENTICATED
 from chats.models import MAX_MESSAGE_LENGTH, Block, Chat, Message
 from root.asgi import application
@@ -53,6 +57,14 @@ class InboxSocketTestCase(FakePresenceMixin, TransactionTestCase):
         output = await socket.receive_output()
         await socket.disconnect()
         self.assertEqual(output['type'], 'websocket.close')
+        return output.get('code')
+
+    async def closed_by_server(self, socket, timeout=3):
+        """The close code, once the server closes this socket on its own."""
+        output = await socket.receive_output(timeout=timeout)
+        self.assertEqual(output['type'], 'websocket.close')
+        await socket.disconnect()  # what the server (Daphne) does next, so disconnect() runs
+        self.sockets.remove(socket)
         return output.get('code')
 
     async def close_all(self):
@@ -229,6 +241,32 @@ class MessagingTests(InboxSocketTestCase):
         self.assertFalse(await database_sync_to_async(Message.objects.exists)())
         await self.close_all()
 
+    async def test_input_the_json_parser_rejects_gets_an_error_not_a_crash(self):
+        # Codex audit M-05: Python refuses ints over 4300 digits with ValueError, not JSONDecodeError.
+        alice = await self.open(self.alice)
+
+        await alice.send_to(text_data='{"chat_id": ' + '9' * 5000 + '}')
+        self.assertEqual((await alice.receive_json_from())['detail'], 'Malformed JSON.')
+
+        await alice.send_json_to({'action': 'ping'})
+        self.assertEqual(await alice.receive_json_from(), {'type': 'pong'}, 'socket still works')
+        await self.close_all()
+
+    async def test_text_rest_would_reject_is_rejected_here_too(self):
+        # Codex audit M-05: NUL breaks PostgreSQL; a lone surrogate can't be encoded as UTF-8.
+        alice = await self.open(self.alice)
+
+        for frame in (f'{{"chat_id": {self.chat.id}, "text": "a\\u0000b"}}',
+                      f'{{"chat_id": {self.chat.id}, "text": "a\\ud800b"}}'):
+            with self.subTest(frame=frame):
+                await alice.send_to(text_data=frame)
+                self.assertEqual((await alice.receive_json_from())['type'], 'error')
+
+        await alice.send_json_to({'action': 'ping'})
+        self.assertEqual(await alice.receive_json_from(), {'type': 'pong'}, 'socket still works')
+        self.assertFalse(await database_sync_to_async(Message.objects.exists)())
+        await self.close_all()
+
     async def test_messages_missed_while_disconnected_can_be_fetched_after_reconnecting(self):
         # COR-1: the channel layer doesn't replay, so the client asks the API for the gap.
         alice, bob = await self.open(self.alice), await self.open(self.bob)
@@ -303,6 +341,22 @@ class RateLimitTests(InboxSocketTestCase):
         self.assertIsNot(await self.open(self.alice), CLOSE_TOO_MANY_SOCKETS, 'a freed slot can be reused')
         await self.close_all()
 
+    async def test_sockets_opened_at_the_same_moment_still_stop_at_5(self):
+        # Codex audit M-01: counting and registering were two steps, so 8 at once all got in.
+        async def try_open():
+            socket = WebsocketCommunicator(application, f'/ws/inbox/?token={token_for(self.alice)}',
+                                           headers=ALLOWED_ORIGIN)
+            await socket.connect()
+            await socket.send_json_to({'action': 'ping'})  # ignored by a refused socket
+            output = await socket.receive_output()
+            self.sockets.append(socket)
+            return output['type'] == 'websocket.send'      # a pong: this one got in
+
+        admitted = await asyncio.gather(*(try_open() for _ in range(8)))
+
+        self.assertEqual(sum(admitted), 5)
+        await self.close_all()
+
     async def test_entries_left_by_dead_sockets_do_not_lock_the_user_out(self):
         # 5 sockets that died without disconnect() (crash, killed process) ...
         clock = [1000.0]
@@ -335,3 +389,35 @@ class ReadReceiptTests(InboxSocketTestCase):
         )()
         self.assertEqual(unread, ['mine'])
         await self.close_all()
+
+
+class SocketLifetimeTests(InboxSocketTestCase):
+    """Codex audit H-01 and M-02: an open socket keeps its rights only while they're still true."""
+
+    async def test_a_socket_closes_when_its_token_expires(self):
+        token = AccessToken.for_user(self.alice)
+        token.set_exp(lifetime=timedelta(seconds=2))
+        socket = await self.open(token=str(token))
+
+        # The browser answers 4401 by renewing its token and reconnecting (assets/app.js).
+        self.assertEqual(await self.closed_by_server(socket), CLOSE_UNAUTHENTICATED)
+
+    async def test_a_socket_closes_soon_after_its_account_is_disabled(self):
+        with mock.patch.object(consumers, 'AUTH_RECHECK_SECONDS', 0.1):
+            alice = await self.open(self.alice)
+            await asyncio.sleep(0.3)  # a few rechecks pass while the account is fine
+            await alice.send_json_to({'action': 'ping'})
+            self.assertEqual(await alice.receive_json_from(), {'type': 'pong'})
+
+            await database_sync_to_async(User.objects.filter(pk=self.alice.pk).update)(is_active=False)
+
+            self.assertEqual(await self.closed_by_server(alice), CLOSE_UNAUTHENTICATED)
+
+    async def test_no_socket_outlives_its_channel_group(self):
+        # The channel layer forgets a group member after group_expiry (24 h). A socket older than that
+        # stays open but gets nothing, so sockets are closed (and the browser reconnects) well before.
+        self.assertLess(consumers.MAX_SOCKET_SECONDS, get_channel_layer().group_expiry)
+
+        with mock.patch.object(consumers, 'MAX_SOCKET_SECONDS', 0.2):
+            alice = await self.open(self.alice)
+            self.assertEqual(await self.closed_by_server(alice), CLOSE_UNAUTHENTICATED)

@@ -64,6 +64,16 @@ class FakeRedis:
     def expire(self, key, seconds):
         pass
 
+    def eval(self, script, numkeys, *args):
+        """Only presence.ADMIT_SCRIPT, redone with the commands above. PresenceOnRealRedisTests runs the real Lua."""
+        assert script == presence.ADMIT_SCRIPT, 'FakeRedis only knows the admit script'
+        key, since, limit, score, member, _ttl = args
+        self.zremrangebyscore(key, '-inf', f'({since}')
+        if self.zcount(key, since, '+inf') >= limit:
+            return 0
+        self.zadd(key, {member: score})
+        return 1
+
     def pipeline(self):
         return FakePipeline(self)
 

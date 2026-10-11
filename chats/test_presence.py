@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from unittest import mock
 
 import redis
@@ -51,6 +52,16 @@ class PresenceTests(FakePresenceMixin, SimpleTestCase):
         self.clock += presence.TTL_SECONDS + 1
         self.assertFalse(presence.is_online(1))
 
+    def test_admit_lets_sockets_in_up_to_the_limit(self):
+        self.assertEqual([presence.admit(1, f'tab-{n}', 2) for n in range(3)], [True, True, False])
+        self.assertEqual(presence.socket_count(1), 2)
+        self.assertTrue(presence.admit(2, 'tab', 2), 'the limit is per user')
+
+    def test_admit_does_not_count_dead_sockets(self):
+        presence.mark_online(1, 'dead')
+        self.clock += presence.TTL_SECONDS + 1
+        self.assertTrue(presence.admit(1, 'new', 1))
+
     def test_online_map_ages_out_dead_sockets_too(self):
         presence.mark_online(1, 'dead')
         presence.mark_online(2, 'live')
@@ -89,3 +100,17 @@ class PresenceOnRealRedisTests(SimpleTestCase):
         self.assertEqual(presence.online_map([self.USER]), {self.USER: True})
         presence.mark_offline(self.USER, 'live')
         self.assertFalse(presence.is_online(self.USER))
+
+    def test_admit_stops_at_the_limit_even_when_called_at_once(self):
+        # Codex audit M-01: the real Lua script, from 8 threads at the same moment.
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            admitted = list(pool.map(lambda n: presence.admit(self.USER, f'tab-{n}', 5), range(8)))
+
+        self.assertEqual(sum(admitted), 5)
+        self.assertEqual(presence.socket_count(self.USER), 5)
+
+    def test_admit_does_not_count_dead_sockets(self):
+        presence.mark_online(self.USER, 'dead')
+        self.clock += presence.TTL_SECONDS + 1
+        self.assertTrue(presence.admit(self.USER, 'new', 1))
+        self.assertEqual(presence.socket_count(self.USER), 1)

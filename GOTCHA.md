@@ -95,6 +95,10 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
 
 ## Runtime and infrastructure
 
+- **"Check, then act" in two Redis calls is a race** (8 of 8 sockets got past a limit of 5). Do it in one step:
+  a Lua script. → [P-27](docs/learning-journal/problems-and-solutions.md#p-27--five-sockets-opened-at-once-let-eight-in)
+- **A long-lived connection must re-check its rights.** Sockets close at token expiry (4401) and within 60 s of an
+  account being disabled ([decision 006](docs/learning-journal/decisions/006-socket-rights-end-with-the-token.md)).
 - **Cleanup code must not depend on every step succeeding.** A failing `group_discard` used to skip "mark
   offline". Log the failure, then do the important step anyway. → [P-13](docs/learning-journal/problems-and-solutions.md#p-13--a-burst-of-disconnects-left-users-online-cor-2)
 - **In Channels, `close(code)` before `accept()` is an HTTP 403: the browser sees 1006, never your code.** Accept, then
@@ -110,8 +114,11 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
   failed at 300. From the server machine itself it passed with 90 ms. Compare before blaming the server. → [P-19](docs/learning-journal/problems-and-solutions.md#p-19--the-second-machine-baseline-measured-the-hotspot-not-the-server)
 - **"Too many connections" can be a client-side pool limit.** redis-py's pool allows 100 per process and raises
   instead of waiting. Read the library before tuning the server.
-- **Port 6379 on this Mac belongs to a Homebrew Redis** (`brew services`), so `localhost:6379` is not Docker's Redis.
-  `docker compose stop redis` doesn't take the app's Redis down; point `REDIS_PORT` at a free port instead. → [P-26](docs/learning-journal/problems-and-solutions.md#p-26--stopping-dockers-redis-didnt-stop-the-apps-redis)
+- **Check what serves port 6379 before trusting a Redis result** (`lsof -nP -iTCP:6379 -sTCP:LISTEN`). A Homebrew
+  Redis used to take it, and `docker compose stop redis` then didn't take the app's Redis down. To test an outage,
+  point `REDIS_PORT` at a free port instead. → [P-26](docs/learning-journal/problems-and-solutions.md#p-26--stopping-dockers-redis-didnt-stop-the-apps-redis)
+- **"Up (healthy)" in `docker compose ps` isn't "reachable".** Check the `PORTS` column shows `0.0.0.0:6379->6379`.
+  Our Redis came back unpublished after a stop/start while another Redis held the port. → [P-28](docs/learning-journal/problems-and-solutions.md#p-28--dockers-redis-came-back-without-its-port)
 - **Port 5432 on this Mac belongs to a Homebrew Postgres 14**, not the Docker one, and it's too old for Django 6.1.
   Stop it (`brew services stop postgresql@14`) or map Docker to another port. → [P-04](docs/learning-journal/problems-and-solutions.md#p-04--makemigrations---check-warned-it-couldnt-connect-to-postgres)
 

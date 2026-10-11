@@ -73,6 +73,32 @@ def _live_since():
     return now() - TTL_SECONDS
 
 
+# Prune, count and add in one step. Redis runs a Lua script alone, so two sockets connecting at
+# the same moment can't both see "4 open" and both get in (Codex audit M-01).
+ADMIT_SCRIPT = """
+redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', '(' .. ARGV[1])
+if redis.call('ZCOUNT', KEYS[1], ARGV[1], '+inf') >= tonumber(ARGV[2]) then
+    return 0
+end
+redis.call('ZADD', KEYS[1], ARGV[3], ARGV[4])
+redis.call('EXPIRE', KEYS[1], ARGV[5])
+return 1
+"""
+
+
+def admit(user_id, channel_name, limit):
+    """Mark this socket online unless the user already has `limit` open. True when it got in.
+
+    True when Redis fails too, like socket_count: connecting still works without Redis.
+    """
+    try:
+        return client().eval(ADMIT_SCRIPT, 1, key(user_id),
+                             _live_since(), limit, now(), channel_name, TTL_SECONDS) == 1
+    except redis.RedisError:
+        logger.exception('presence: admit failed for user %s', user_id)
+        return True
+
+
 def socket_count(user_id):
     """Open sockets for this user. 0 when Redis fails, so connecting still works."""
     try:

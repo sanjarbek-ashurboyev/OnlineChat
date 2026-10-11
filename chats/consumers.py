@@ -1,5 +1,7 @@
+import asyncio
 import json
 import logging
+import time
 
 from asgiref.sync import async_to_sync, sync_to_async
 from channels.db import database_sync_to_async
@@ -10,8 +12,9 @@ from django.utils import timezone
 
 from accounts.models import User
 from chats import presence
-from chats.models import MAX_MESSAGE_LENGTH, Block, Chat, Message
+from chats.models import Block, Chat, Message
 from chats.ratelimit import TokenBucket
+from chats.serializers import MessageSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +24,13 @@ CLOSE_TOO_MANY_SOCKETS = 4429
 # SEC-5. Per socket: 10 frames at once, then 1 per second. Per user: 5 sockets (tabs).
 FRAMES_PER_SECOND, FRAME_BURST = 1, 10
 MAX_SOCKETS_PER_USER = 5
+
+# Codex audit H-01: a socket keeps its rights only while its token is valid and its account active.
+# The token's expiry is exact; the account is re-checked this often.
+AUTH_RECHECK_SECONDS = 60
+# Codex audit M-02: the channel layer drops a group member after group_expiry (24 h), and the socket
+# then gets nothing. Closing it well before means the browser reconnects and joins again.
+MAX_SOCKET_SECONDS = 12 * 60 * 60
 
 
 def group_for_user(user_id):
@@ -66,20 +76,27 @@ class InboxConsumer(AsyncWebsocketConsumer):
         if not self.user.is_authenticated:
             await self.refuse(CLOSE_UNAUTHENTICATED)
             return
-        # A soft cap: two sockets connecting at the same moment can both get in.
-        if await sync_to_async(presence.socket_count)(self.user.pk) >= MAX_SOCKETS_PER_USER:
+        # Counts and registers this socket in one step, which also marks the user online:
+        # presence follows the app being open, not a chat being selected.
+        if not await sync_to_async(presence.admit)(self.user.pk, self.channel_name, MAX_SOCKETS_PER_USER):
             await self.refuse(CLOSE_TOO_MANY_SOCKETS)
             return
-
-        self.bucket = TokenBucket(rate=FRAMES_PER_SECOND, burst=FRAME_BURST)
-        self.group = group_for_user(self.user.pk)
-        await self.channel_layer.group_add(self.group, self.channel_name)
-        await self.accept()
-        # Presence follows the app being open, not a chat being selected.
-        await sync_to_async(presence.mark_online)(self.user.pk, self.channel_name)
+        try:
+            self.bucket = TokenBucket(rate=FRAMES_PER_SECOND, burst=FRAME_BURST)
+            self.group = group_for_user(self.user.pk)
+            await self.channel_layer.group_add(self.group, self.channel_name)
+            await self.accept()
+        except Exception:
+            # disconnect() won't run for a consumer that failed here; give the slot back.
+            await sync_to_async(presence.mark_offline)(self.user.pk, self.channel_name)
+            raise
         await self.touch_last_seen()
+        self.deadline = min(self.scope['token_exp'], time.time() + MAX_SOCKET_SECONDS)
+        self.watchdog = asyncio.create_task(self.watch_rights())
 
     async def disconnect(self, code):
+        if hasattr(self, 'watchdog'):
+            self.watchdog.cancel()
         if hasattr(self, 'group'):
             try:
                 await self.channel_layer.group_discard(self.group, self.channel_name)
@@ -91,6 +108,23 @@ class InboxConsumer(AsyncWebsocketConsumer):
         if getattr(self, 'user', None) and self.user.is_authenticated:
             await sync_to_async(presence.mark_offline)(self.user.pk, self.channel_name)
             await self.touch_last_seen()
+
+    async def watch_rights(self):
+        """Close at the deadline (token expiry or MAX_SOCKET_SECONDS), or once the account is disabled.
+
+        4401 makes the browser renew its token and reconnect (assets/app.js).
+        """
+        while True:
+            await asyncio.sleep(max(0, min(self.deadline - time.time(), AUTH_RECHECK_SECONDS)))
+            if time.time() >= self.deadline:
+                break
+            try:
+                if not await self.still_active():
+                    break
+            except Exception:
+                # Try again next time. The deadline still holds, because the loop goes on.
+                logger.exception('inbox: account check failed for user %s', self.user.pk)
+        await self.close(code=CLOSE_UNAUTHENTICATED)
 
     async def refuse(self, code):
         # Accept, then close. A close before accept is an HTTP 403, and the browser
@@ -109,7 +143,7 @@ class InboxConsumer(AsyncWebsocketConsumer):
 
         try:
             payload = json.loads(text_data or '')
-        except json.JSONDecodeError:
+        except ValueError:  # JSONDecodeError, and ints too long to convert (Codex audit M-05)
             await self.send_error('Malformed JSON.')
             return
         if not isinstance(payload, dict):
@@ -142,14 +176,12 @@ class InboxConsumer(AsyncWebsocketConsumer):
         if not isinstance(text, str):
             await self.send_error('text must be a string.', chat_id=chat.pk)
             return
-        text = text.strip()
-        if not text:
-            await self.send_error('text must not be empty.', chat_id=chat.pk)
+        # REST's own checks (blank, length, NUL, surrogates), so both doors accept the same text (M-05).
+        serializer = MessageSerializer(data={'text': text})
+        if not serializer.is_valid():
+            await self.send_error(serializer.errors['text'][0], chat_id=chat.pk)
             return
-        if len(text) > MAX_MESSAGE_LENGTH:
-            await self.send_error(f'text must be at most {MAX_MESSAGE_LENGTH} characters.',
-                                  chat_id=chat.pk)
-            return
+        text = serializer.validated_data['text']  # trimmed
 
         if await self.is_blocked(chat):
             await self.send_error("You can't send messages in this chat.",
@@ -218,6 +250,10 @@ class InboxConsumer(AsyncWebsocketConsumer):
             .exclude(sender=self.user)
             .update(is_read=True, read_at=timezone.now())
         )
+
+    @database_sync_to_async
+    def still_active(self):
+        return User.objects.filter(pk=self.user.pk, is_active=True).exists()
 
     @database_sync_to_async
     def touch_last_seen(self):
