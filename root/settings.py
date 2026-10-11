@@ -185,6 +185,8 @@ REST_FRAMEWORK = {
         'refresh': '30/min',
         'profile_read': '120/min',
         'chat_create': '30/hour',
+        # REST sends; the socket allows the same sustained 1/s (chats/consumers.py).
+        'message_send': '60/min',
     },
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 50,

@@ -16,7 +16,8 @@ def user_from_token(raw_token):
     except TokenError:
         return AnonymousUser()
     try:
-        return User.objects.get(pk=token['user_id'])
+        # is_active: a disabled account's unexpired token must stop working, as it does for REST.
+        return User.objects.get(pk=token['user_id'], is_active=True)
     except (KeyError, User.DoesNotExist):
         return AnonymousUser()
 

@@ -86,6 +86,11 @@ class ChatListCreateAPIView(ListCreateAPIView):
 class MessageListCreateAPIView(ListCreateAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = MessageSerializer
+    throttle_scope = 'message_send'
+
+    def get_throttles(self):
+        # Only sending is limited; reading history and catching up after a reconnect are not.
+        return [ScopedRateThrottle()] if self.request.method == 'POST' else []
 
     def get_chat(self):
         return get_object_or_404(chats_for(self.request.user),

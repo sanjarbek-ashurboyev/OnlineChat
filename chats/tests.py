@@ -8,7 +8,7 @@ from rest_framework.test import APIClient
 
 from chats import presence
 from chats.models import MAX_MESSAGE_LENGTH, Block, Chat, Message
-from test_helpers import FakePresenceMixin, client_for, make_user
+from test_helpers import FakePresenceMixin, client_for, make_user, token_for
 
 CHATS = '/api/v1/chats/'
 
@@ -149,6 +149,26 @@ class MessageTests(FakePresenceMixin, TestCase):
         self.assertEqual(self.send('x' * MAX_MESSAGE_LENGTH).status_code, 201)
         self.assertEqual(self.send('x' * (MAX_MESSAGE_LENGTH + 1)).status_code, 400)
         self.assertEqual(Message.objects.count(), 1)
+
+    def test_sending_is_limited_to_60_a_minute_but_reading_is_not(self, broadcast):
+        # Matches the socket's sustained 1 message/s, so REST is not a way around it.
+        cache.clear()
+        self.addCleanup(cache.clear)
+        for _ in range(60):
+            self.assertEqual(self.send('hi').status_code, 201)
+        self.assertEqual(self.send('one too many').status_code, 429)
+        self.assertEqual(client_for(self.me).get(self.url).status_code, 200)
+        self.assertEqual(self.send('hi', user=self.friend).status_code, 201,
+                         'the other participant is unaffected')
+
+    def test_a_disabled_account_cannot_use_its_token(self, broadcast):
+        token = token_for(self.me)
+        self.me.is_active = False
+        self.me.save()
+
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(client.post(self.url, {'text': 'hi'}).status_code, 401)
 
     def test_blank_messages_are_rejected(self, broadcast):
         self.assertEqual(self.send('   ').status_code, 400)

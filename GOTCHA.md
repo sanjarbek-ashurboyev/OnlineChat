@@ -69,6 +69,8 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
 - **A leaked secret must be rotated.** Deleting it from git history doesn't help: clones keep it.
 - **"No leaks found" only means "nothing matched".** gitleaks' built-in rules missed our real Django key.
   Test a scanner on a planted secret before trusting it. → [P-11](docs/learning-journal/problems-and-solutions.md#p-11--gitleaks-built-in-rules-missed-our-real-leaked-key)
+- **REST and the WebSocket are two doors to the same actions.** Any auth check or limit added to one needs the
+  other too, with a test for each. → [P-20](docs/learning-journal/problems-and-solutions.md#p-20--two-doors-one-lock-auth-and-rate-limits-only-on-one-transport)
 - **`loadtest/tokens.json` holds live login tokens.** It's gitignored; keep it that way.
 
 ## Runtime and infrastructure
