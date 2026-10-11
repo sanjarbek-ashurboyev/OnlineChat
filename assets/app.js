@@ -2,6 +2,9 @@
 
 const API = '/api/v1';
 const PING_MS = 30000;          // presence keys expire after 90s
+const PONG_GRACE_MS = 10000;    // no frame for PING_MS + this: the connection is dead (Codex audit H-06)
+const ACK_TIMEOUT_MS = 10000;   // no echo by then: look in the history (Codex audit H-06)
+const START_RETRY_MS = 5000;    // the server couldn't be reached at startup (Codex audit M-12)
 const AVATAR_FALLBACK =
   'data:image/svg+xml;utf8,' + encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">' +
@@ -27,7 +30,16 @@ const state = {
   nextPage: 2,
   hasOlder: false,
   seenIds: new Set(),
+  session: 0,             // bumped by logout; answers for an earlier session are dropped (Codex audit H-04)
+  reconnectTimer: null,
+  ackTimer: null,
+  startTimer: null,
+  lastFrameAt: 0,
 };
+
+/** A promise that never settles. Returned for an answer from an earlier session, so whatever
+ *  the caller does next (draw chats, save tokens, show an error) never runs. */
+const dropped = () => new Promise(() => {});
 
 /* ── tokens ─────────────────────────────── */
 
@@ -46,15 +58,21 @@ function clearTokens() {
   localStorage.removeItem('refresh');
 }
 
+/** true: renewed. false: the server refused the refresh token, so sign in again.
+ *  Throws on a network or server error, which is no reason to sign out (Codex audit M-12). */
 async function refreshAccess() {
   if (!state.refresh) return false;
+  const session = state.session;
   const res = await fetch(`${API}/auth/token/refresh/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ refresh: state.refresh }),
   });
-  if (!res.ok) return false;
+  if (res.status === 400 || res.status === 401) return session === state.session ? false : dropped();
+  if (!res.ok) throw Object.assign(new Error('refresh failed'), { status: res.status });
   const data = await res.json();
+  // Signed out meanwhile: these tokens must not sign anyone back in.
+  if (session !== state.session) return dropped();
   saveTokens(data.access, data.refresh);
   return true;
 }
@@ -62,6 +80,7 @@ async function refreshAccess() {
 /* ── api helper ─────────────────────────── */
 
 async function api(path, { method = 'GET', body, isForm = false, retry = true } = {}) {
+  const session = state.session;
   const headers = {};
   if (state.access) headers.Authorization = `Bearer ${state.access}`;
   if (body && !isForm) headers['Content-Type'] = 'application/json';
@@ -78,13 +97,14 @@ async function api(path, { method = 'GET', body, isForm = false, retry = true } 
   }
 
   const text = await res.text();
+  if (session !== state.session) return dropped();   // an answer for whoever was signed in before
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) throw Object.assign(new Error('request failed'), { status: res.status, data });
   return data;
 }
 
 function errorText(err) {
-  if (err.status === 429) return 'Too many searches. Try again later.';
+  // A 429's detail is the server's own "Expected available in N seconds" (Codex audit L-03).
   const d = err.data;
   if (!d) return 'Something went wrong.';
   if (typeof d === 'string') return d;
@@ -321,6 +341,24 @@ async function catchUp(chatId) {
   if (data.results.length) scrollToBottom();
 }
 
+/** No echo in time (Codex audit H-06). The echo may be what got lost, so look in the history. */
+async function reconcileSend(sent) {
+  let saved = false;
+  try {
+    const data = await api(`/chats/${sent.chatId}/messages/?after=${sent.after}`);
+    saved = data.results.some((m) => m.sender_id === state.me.id && m.text === sent.text);
+  } catch {
+    // Can't tell: say so below, and keep the text.
+  }
+  if (saved) {
+    clearComposerIf(sent.text);
+    if (sent.chatId === state.activeId) catchUp(sent.chatId);   // draw it
+    return;
+  }
+  $('send-error').textContent = "The server didn't answer. Your message may not have been sent.";
+  $('send-error').hidden = false;
+}
+
 $('load-older').addEventListener('click', async () => {
   const box = $('messages');
   const before = box.scrollHeight;
@@ -374,12 +412,22 @@ function setConn(cls) {
 
 function closeSocket() {
   clearInterval(state.pingTimer);
+  clearTimeout(state.reconnectTimer);
   if (state.ws) {
-    state.ws.onclose = null;          // deliberate close: do not reconnect
+    // Deliberate close: detach every handler, so nothing from this socket runs again.
+    state.ws.onopen = state.ws.onmessage = state.ws.onclose = null;
     state.ws.close();
     state.ws = null;
   }
   setConn('');
+}
+
+/** Full jitter: a random wait up to the backoff, so after a restart every client
+ *  doesn't reconnect in the same instant (COR-4). */
+function scheduleReconnect() {
+  const delay = Math.random() * Math.min(1000 * 2 ** state.retry++, 15000);
+  clearTimeout(state.reconnectTimer);
+  state.reconnectTimer = setTimeout(connectInbox, delay);
 }
 
 function socketSend(payload) {
@@ -435,13 +483,23 @@ function connectInbox() {
   };
 
   ws.onopen = () => {
+    state.lastFrameAt = Date.now();
     ws.send(JSON.stringify({ action: 'ping' }));
     state.pingTimer = setInterval(() => {
+      // The last ping got no answer: the connection is dead even if the browser hasn't noticed.
+      if (Date.now() - state.lastFrameAt > PING_MS + PONG_GRACE_MS) {
+        closeSocket();
+        settleSend();
+        setConn('is-down');
+        scheduleReconnect();
+        return;
+      }
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ action: 'ping' }));
     }, PING_MS);
   };
 
   ws.onmessage = (event) => {
+    state.lastFrameAt = Date.now();
     const data = JSON.parse(event.data);
     if (!ready) onReady();
     if (data.type === 'pong') return;
@@ -455,8 +513,8 @@ function connectInbox() {
         if (data.sender_id !== state.me.id) sendRead(data.chat_id);
       }
       if (isOurSend(data)) {
-        if (composer.value.trim() === data.text) { composer.value = ''; composer.style.height = 'auto'; }
-        state.sending = null;
+        clearComposerIf(data.text);
+        settleSend();
       }
       applyToSidebar(data);
       return;
@@ -480,7 +538,7 @@ function connectInbox() {
     if (data.type === 'error') {
       // Errors don't say which frame they answer, so any error fails a waiting send.
       // Its text stays in the composer for a retry.
-      state.sending = null;
+      settleSend();
       $('send-error').textContent = data.detail;
       $('send-error').hidden = false;
     }
@@ -488,24 +546,18 @@ function connectInbox() {
 
   ws.onclose = (event) => {
     clearInterval(state.pingTimer);
-    state.sending = null;                    // no answer coming; the text stays in the composer
+    settleSend();                            // no answer coming; the text stays in the composer
     setConn('is-down');
     if (!state.me) return;                   // logged out on purpose
 
-    // Full jitter: a random wait up to the backoff, so after a restart every client
-    // doesn't reconnect in the same instant (COR-4).
-    const reconnectLater = () => {
-      const delay = Math.random() * Math.min(1000 * 2 ** state.retry++, 15000);
-      setTimeout(() => { if (state.me) connectInbox(); }, delay);
-    };
-
     // 4401 means the token expired mid-session: renew, then reconnect. Through the
     // backoff too, so a token the server keeps refusing can't cause a tight loop.
+    // Only a refused refresh token signs out; a network error just tries again (M-12).
     if (event.code === 4401) {
-      refreshAccess().then((ok) => (ok ? reconnectLater() : logout()));
+      refreshAccess().then((ok) => (ok ? scheduleReconnect() : logout()), scheduleReconnect);
       return;
     }
-    reconnectLater();
+    scheduleReconnect();
   };
 }
 
@@ -525,6 +577,16 @@ composer.addEventListener('keydown', (e) => {
   }
 });
 
+function clearComposerIf(text) {
+  if (composer.value.trim() === text) { composer.value = ''; composer.style.height = 'auto'; }
+}
+
+/** Stop waiting for the server's answer to our send. */
+function settleSend() {
+  state.sending = null;
+  clearTimeout(state.ackTimer);
+}
+
 /** Our own message coming back from the server: the send we're waiting for succeeded. */
 function isOurSend(msg) {
   const s = state.sending;
@@ -543,7 +605,14 @@ $('send-form').addEventListener('submit', (e) => {
   }
 
   // Keep the text until the server answers: the echo clears it, an error leaves it.
-  state.sending = { chatId: state.activeId, text };
+  // `after` marks where to look in the history if the answer never comes.
+  const sent = { chatId: state.activeId, text, after: Math.max(0, ...state.seenIds) };
+  state.sending = sent;
+  state.ackTimer = setTimeout(() => {
+    if (state.sending !== sent) return;
+    settleSend();
+    reconcileSend(sent);
+  }, ACK_TIMEOUT_MS);
   $('send-error').hidden = true;
 });
 
@@ -583,12 +652,28 @@ function renderMe() {
 }
 
 function logout() {
+  // Nothing from this session may touch the next one (Codex audit H-04): requests and token
+  // refreshes still in flight are dropped, and the socket's handlers and timers are gone.
+  state.session += 1;
   closeSocket();
+  clearTimeout(state.startTimer);
+  settleSend();
   clearTokens();
   state.me = null;
   state.chats = [];
   state.chatPages = 1;
   state.activeId = null;
+  state.opened += 1;
+  state.peer = null;
+  state.retry = 0;
+  state.seenIds.clear();
+  $('chat-list').textContent = '';
+  $('message-rows').textContent = '';
+  composer.value = '';
+  $('send-error').hidden = true;
+  $('lookup-msg').hidden = true;
+  $('pane-chat').hidden = true;
+  $('pane-empty').hidden = false;
   $('app').hidden = true;
   $('auth').hidden = false;
 }
@@ -596,22 +681,33 @@ function logout() {
 $('logout').addEventListener('click', logout);
 
 async function start() {
+  clearTimeout(state.startTimer);   // a manual login while a retry was waiting
   try {
     state.me = await api('/auth/profile/');
-  } catch {
-    logout();
+  } catch (err) {
+    // Only the server refusing our tokens signs us out. A network or server error is
+    // retried, keeping the tokens (Codex audit M-12).
+    if (err.status === 401) {
+      logout();
+      return;
+    }
+    $('auth-error').textContent = "Can't reach the server. Trying again…";
+    $('auth-error').hidden = false;
+    state.startTimer = setTimeout(start, START_RETRY_MS);
     return;
   }
+  $('auth-error').hidden = true;
   $('auth').hidden = true;
   $('app').hidden = false;
   $('app').dataset.view = 'list';
   renderMe();
-  await loadChats();
+  // The socket doesn't need the chat list, so a failed list must not keep it closed (M-12).
   connectInbox();          // one socket for every conversation
+  loadChats().catch(() => {});   // the poll below tries again
 }
 
 // Messages arrive over the socket; this poll only refreshes other people's
 // online dots, which nothing pushes to us.
-setInterval(() => { if (state.me) loadChats(); }, 45000);
+setInterval(() => { if (state.me) loadChats().catch(() => {}); }, 45000);
 
 if (state.access) start();

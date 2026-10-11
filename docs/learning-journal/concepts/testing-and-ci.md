@@ -77,6 +77,11 @@ make tests fast and independent, but they can drift from the real thing. The rea
   `test-postgres-redis`.
 - **Controlling timing:** `page.route(url, handler)` intercepts a request. Holding it in a list and calling
   `route.continue_()` later makes "this answer is slow" happen on purpose, every time.
+- **Controlling the socket** (session 021): `page.route_web_socket(url, handler)` puts the test between page and
+  server. `ws.connect_to_server()` gives the server side; forward frames with `on_message`/`send`, and skip the ones
+  you want lost (an echo, a pong). `ws.close(code=4401)` closes the page's socket as the server would.
+- **Controlling time** (session 021): `page.clock.install()` before loading the page fakes its timers;
+  `page.clock.fast_forward(11_000)` runs everything due in the next 11 s at once. A 10 s timeout tests in milliseconds.
 - **Waiting:** `expect(locator).to_have_count(50)` retries until it's true (5 s at most). Don't sleep and hope.
 - **Run locally:** `docker compose up -d`, `playwright install chromium`, then `python manage.py test chats.test_browser`.
 - Why Playwright: [decision 004](../decisions/004-browser-tests-with-playwright.md).

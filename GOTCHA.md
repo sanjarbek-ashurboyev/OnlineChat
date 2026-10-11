@@ -59,10 +59,15 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
   `python manage.py test chats.test_browser`. A skip is not a pass.
 - **macOS spawns processes, Linux forks them.** Code that starts a process can pass on the Mac and fail in CI.
   Reproduce with `multiprocessing.set_start_method('fork', force=True)`. → [P-22](docs/learning-journal/problems-and-solutions.md#p-22--browser-tests-passed-on-the-mac-but-never-connected-in-ci)
+- **After an `await` in `app.js`, the user may even have signed out.** `api()` drops answers from an earlier
+  session (`state.session`); new async code must go through it or check the session itself. → [P-29](docs/learning-journal/problems-and-solutions.md#p-29--logout-didnt-stop-the-previous-sessions-work)
 - **After an `await` in `app.js`, the user may have moved on.** Check the answer still belongs to what's on screen
   before drawing it. → [P-21](docs/learning-journal/problems-and-solutions.md#p-21--four-frontend-bugs-with-no-tests-to-catch-them)
 - **In a `subTest` loop, keep every assertion of a case inside its `with self.subTest(...)`.** One outside it ends
   the test at the first failure, and the later cases never run.
+- **`page.evaluate` waits for a promise you return.** If the test holds that promise's request (`page.route`),
+  it deadlocks. Start it with `void loadChats()` instead (session 021).
+- **A Playwright route handler must be a Python function**, not a built-in like `held.append`: wrap it in a lambda.
 - **Write the failing test first, and watch it fail.** When mocking, also assert the mock was called
   (`assert_awaited_once()`); otherwise the test can pass without testing anything.
 

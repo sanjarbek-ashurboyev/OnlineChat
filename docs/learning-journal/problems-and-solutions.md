@@ -448,3 +448,18 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   `localhost:6379`, as `compose.yaml` intends.
 - **Lesson:** "Up (healthy)" says the service runs, not that you can reach it. Check the `PORTS` column.
 
+## P-29 · Logout didn't stop the previous session's work
+
+- **Session:** [021](sessions/021-frontend-session-lifecycle.md)
+- **Observed:** Codex audit H-04, reproduced by browser tests on the old `app.js`: a token refresh that finished
+  after logout saved its token again (`localStorage.access` set on the login screen); a chat-list answer from
+  before logout showed User 2's chat to the next account; and a send still waiting at logout blocked the next
+  account's first message.
+- **Root cause (Confirmed, by those tests):** `logout()` only closed the socket and cleared tokens and the chat
+  list. Requests, the refresh call, the reconnect timer and `state.sending` belonged to no session, so when they
+  finished they wrote into whatever session was current.
+- **Fix:** `state.session`, bumped by `logout()`; `api()` and `refreshAccess()` drop answers for an older session.
+  `logout()` also cancels the reconnect and startup timers, detaches every socket handler, and clears the pending
+  send, open chat, rows and composer.
+- **Lesson:** anything async that can outlive a session has to know which session it belongs to.
+
