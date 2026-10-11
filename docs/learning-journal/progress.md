@@ -1,6 +1,6 @@
 # Progress
 
-*Updated: 2026-10-11 (session 014).*
+*Updated: 2026-10-11 (session 015).*
 
 **Status words:** **Done** = code written, tests or checks run and passing, committed.
 **Partial** = some of the acceptance criteria are met. **Blocked** = waiting on something outside
@@ -32,6 +32,7 @@ were already fixed on `main` before this journal started.
 | Hotfix: quiet WebSockets crashed after 5 s (redis-py 8 default timeout) | **Done**, merged as [PR #21](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/21) | Reproduced 3/3; new test failed first, passes now; full suite on real Postgres + Redis: 69 OK; all 4 CI jobs | `main` `f69fbe7` |
 | Fix: leftover presence entries locked users out (one TTL per user, renewed by any tab) | **Done**, merged as [PR #22](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/22) | Tests failed first; 80/80 on real Postgres + Redis (incl. a real-Redis presence test); all 4 CI jobs; real-stack check: dead entry pruned on connect | `main` `ac84b47` |
 | Baseline load test (realistic profile, second machine) | **Partial** | One Daphne process, `DEBUG=False`, commit `ac84b47`. Second Mac over an iPhone hotspot: 200 healthy, 300 failed, **network-limited** (P-19). Same Mac: healthy to **750**, cliff at 1,000 (WebSocket path only; REST stayed at 39 ms). Needs a re-run on a normal network | [session 014](sessions/014-baseline-load-test.md) |
+| Codex review #1–#2: disabled accounts refused on the socket; REST message sends limited to 60/min | **Done** on branch, PR open | Socket and throttle tests failed first, then 83 OK (2 skipped); Ruff clean. Real Postgres + Redis left to CI | [session 015](sessions/015-codex-review-fixes-1-2.md) |
 
 Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), and 50/50 tests pass locally.
 
@@ -39,7 +40,7 @@ Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), a
 
 | What | How | Result |
 |---|---|---|
-| Test suite | `make test` (`manage.py test --settings=root.settings_test`) | 80 on `fix-presence-leak`, all pass on real Postgres + Redis; 2 skipped on SQLite (need real Redis) |
+| Test suite | `make test` (`manage.py test --settings=root.settings_test`) | 83 on `fix-ws-inactive-and-rest-throttle`, OK (2 skipped on SQLite, need real Redis). Last real Postgres + Redis run: 80 on `fix-presence-leak` |
 | Test suite on real services | CI job `test-postgres-redis` (Postgres 17, Redis 7, normal settings) | 53 pass (T-11 branch) |
 | No secrets in history | CI job `secrets` (gitleaks 8.30.1, custom `django-secret-key` rule) | Clean; a planted key is caught |
 | Lint | `ruff check .` (version 0.16.10, as in CI) | Clean |
@@ -53,6 +54,8 @@ Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), a
 
 See the [audit](../scaling/01-audit.md) and its status update. The most important still-open items:
 - SEC-3/4/5 and COR-3 fixed (T-03, T-04, merged). COR-1/4/5 fixed on the T-09 branch, checked in a browser. The redis-py 8 regression (quiet sockets crash) is fixed in PR #21.
+- **Codex review #3–#9** (session 015): frontend chat switching, "load older" order, sidebar pagination, lost drafts,
+  24 h group expiry, load-tester false "healthy", REST read receipts. Session 014's capacity numbers need a rerun after #8.
 - **PERF-1/2/3:** one DB thread per process, plus a new DB connection per call (Stage 1).
 - Dependabot backlog cleared: #8–#11 merged; #12 and #13 replaced by #16 ([P-14](problems-and-solutions.md#p-14--dependabot-prs-that-could-never-be-merged)).
   Auto-merge is on: for new Dependabot PRs, comment `@dependabot rebase`, then enable auto-merge.

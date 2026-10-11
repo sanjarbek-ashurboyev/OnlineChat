@@ -59,6 +59,7 @@ window, and requests work again.
 | `POST /auth/token/refresh/` | `refresh` | 30/min | IP | Cheap to call, no reason to call often |
 | `GET /users/<id>/` | `profile_read` | 120/min | User | Walking every id |
 | `POST /chats/` | `chat_create` | 30/hour | User | Messaging everyone |
+| `POST /chats/<id>/messages/` | `message_send` | 60/min | User | Same rate as the socket, so REST isn't a way around it (session 015) |
 | `GET /users/lookup/` | `user_lookup` | 20/hour | User | Already there before T-03 |
 
 The DRF classes we use:
@@ -107,6 +108,8 @@ WAF later. They stack: each layer catches what the others can't see.
 
 ## 7. Common mistakes
 
+- **Limiting one path to an action but not the other.** Our messages can be sent over the socket *or* REST.
+  T-04 limited only the socket, so the limit could be skipped ([P-20](../problems-and-solutions.md#p-20--two-doors-one-lock-auth-and-rate-limits-only-on-one-transport)).
 - **Counting the proxy instead of the client.** Behind nginx or a load balancer, every request comes from
   the proxy's IP, so all users share one counter. Set DRF's `NUM_PROXIES` when a proxy is added. We have
   no proxy yet.

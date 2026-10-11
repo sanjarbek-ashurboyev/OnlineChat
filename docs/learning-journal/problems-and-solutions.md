@@ -311,3 +311,18 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   separately (healthy at 750, cliff at 1,000).
 - **Lesson:** "run the generator on another machine" assumes a good network between them. Measure the network,
   or compare with a local run, before blaming the server.
+
+## P-20 · Two doors, one lock: auth and rate limits only on one transport
+
+- **Session:** [015](sessions/015-codex-review-fixes-1-2.md)
+- **Observed:** an external review (OpenAI Codex) reported that (1) a disabled account could still open the inbox
+  WebSocket with an unexpired token, and (2) `POST /chats/<id>/messages/` had no rate limit, so the socket's limit
+  (T-04) could be skipped by sending over REST.
+- **Root cause (Confirmed, by tests):** the app has two ways to reach the same actions, REST and the WebSocket,
+  and each protection was added to only one of them. SimpleJWT's REST authentication checks `is_active`. Our own
+  socket middleware (`chats/middleware.py`) only checked the token's signature and expiry, then loaded the user
+  without that check. T-04 limited frames on the socket, and nobody added a REST limit for the same action.
+  The new socket test errored (the socket was accepted) and the throttle test failed (`201 != 429`) before the fix.
+- **Fix:** the middleware looks the user up with `is_active=True`. Message sends over REST have a `message_send`
+  throttle of 60/min per user, the same sustained rate as the socket.
+- **Lesson:** list every path to an action before calling it protected, and write one test per path.

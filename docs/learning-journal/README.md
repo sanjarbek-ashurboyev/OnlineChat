@@ -32,6 +32,7 @@ It follows the real repository: file names, commands and results are the actual 
 12. [012 · Hotfix: quiet WebSockets crashed after 5 seconds (redis-py 8)](sessions/012-redis-socket-timeout.md)
 13. [013 · Fix: leftover presence entries no longer lock users out](sessions/013-presence-leak.md)
 14. [014 · Baseline load test: realistic profile, second machine, and what actually limited it](sessions/014-baseline-load-test.md)
+15. [015 · Codex review: disabled accounts on WebSockets, unlimited REST sends](sessions/015-codex-review-fixes-1-2.md)
 
 ## How to use it to learn
 

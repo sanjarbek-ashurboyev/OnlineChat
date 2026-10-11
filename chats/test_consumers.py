@@ -77,6 +77,15 @@ class ConnectionTests(InboxSocketTestCase):
             with self.subTest(token=token):
                 self.assertEqual(await self.refused(token=token), CLOSE_UNAUTHENTICATED)
 
+    async def test_a_disabled_account_is_refused_even_with_a_valid_token(self):
+        # REST already rejects inactive users (SimpleJWT); the socket must match.
+        token = token_for(self.alice)
+        self.alice.is_active = False
+        await database_sync_to_async(self.alice.save)()
+
+        self.assertEqual(await self.refused(token=token), CLOSE_UNAUTHENTICATED)
+        self.assertFalse(self.online(self.alice))
+
     async def test_a_frame_sent_to_a_refused_socket_is_ignored(self):
         # Between accept and close, a client can still get a frame in.
         socket = WebsocketCommunicator(application, '/ws/inbox/?token=', headers=ALLOWED_ORIGIN)
