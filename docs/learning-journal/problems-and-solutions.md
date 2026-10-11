@@ -421,3 +421,30 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
 - **Fix (for the test):** started a second server with `REDIS_PORT=6390`, where nothing listens. Old code: 500;
   new code: 401. The Homebrew service was left running; whether to keep it is your call.
 - **Lesson:** before testing "service X is down", check which process the app is really connected to.
+
+## P-27 · Five sockets opened at once let eight in
+
+- **Session:** [020](sessions/020-websocket-hardening.md)
+- **Observed:** Codex audit M-01: 8 simultaneous connections for one user were all admitted, despite the 5-socket
+  limit. Reproduced by a test: 8 connects through `asyncio.gather` → **8 admitted** (expected 5).
+- **Root cause (Confirmed, by the test):** `connect()` counted the user's sockets (`presence.socket_count`), then
+  awaited `group_add` and `accept`, and only then added itself (`mark_online`). All 8 counted before any of them
+  added, so all saw fewer than 5. The code even said so: "A soft cap".
+- **Fix:** `presence.admit()` prunes, counts and adds in one Lua script. Redis runs a script alone, so nothing
+  can run between the count and the add. Real-Redis test: 8 threads at once → exactly 5.
+- **Lesson:** "check, then act" across two separate calls is a race. Make the check and the act one step.
+
+## P-28 · Docker's Redis came back without its port
+
+- **Session:** [020](sessions/020-websocket-hardening.md)
+- **Observed:** on the real-services settings almost every consumer test failed with
+  `Connect call failed ('127.0.0.1', 6379)`. `docker compose ps` showed `onlinechat_redis` up, but with ports
+  `6379/tcp` instead of `0.0.0.0:6379->6379/tcp`. The Homebrew Redis had been stopped meanwhile, so nothing served
+  `localhost:6379`.
+- **Root cause (Hypothesis):** in session 019 I ran `docker compose stop redis` / `start redis` while the Homebrew
+  Redis held `127.0.0.1:6379`. Docker probably couldn't publish the port then, and the restarted container stayed
+  unpublished. Not reproduced.
+- **Fix:** `docker compose up -d --force-recreate redis` (data stays in its volume). Now Docker's Redis serves
+  `localhost:6379`, as `compose.yaml` intends.
+- **Lesson:** "Up (healthy)" says the service runs, not that you can reach it. Check the `PORTS` column.
+
