@@ -50,6 +50,8 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
 - **Green on SQLite is not green on Postgres.** The `test-postgres-redis` CI job is the real check.
 - **After inserting a test class into a file, list `^class|def test_` to check every test is in the class you meant.**
   A class dropped mid-file silently adopts the tests below it (T-04 did this to two `MessagingTests` tests).
+- **In zsh, never name a variable `path`.** It's tied to `PATH`; `for path in ...` wipes it, and every later
+  command is "not found" (session 019).
 - **macOS has no `timeout` command.** `timeout 40 cmd` fails with "command not found", so the command never runs.
   Use Python's `subprocess.run(..., timeout=40)` instead.
 - **"0 tests ran" is not "tests pass".**
@@ -74,6 +76,8 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
 
 ## Security
 
+- **DRF's `NUM_PROXIES` unset means "trust `X-Forwarded-For`"**, not "no proxy". We set it from
+  `DJANGO_NUM_PROXIES` (default 0). Count proxies correctly when deploying. → [P-25](docs/learning-journal/problems-and-solutions.md#p-25--a-forged-x-forwarded-for-header-reset-the-login-limit)
 - **A leaked secret must be rotated.** Deleting it from git history doesn't help: clones keep it.
 - **"No leaks found" only means "nothing matched".** gitleaks' built-in rules missed our real Django key.
   Test a scanner on a planted secret before trusting it. → [P-11](docs/learning-journal/problems-and-solutions.md#p-11--gitleaks-built-in-rules-missed-our-real-leaked-key)
@@ -106,6 +110,8 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
   failed at 300. From the server machine itself it passed with 90 ms. Compare before blaming the server. → [P-19](docs/learning-journal/problems-and-solutions.md#p-19--the-second-machine-baseline-measured-the-hotspot-not-the-server)
 - **"Too many connections" can be a client-side pool limit.** redis-py's pool allows 100 per process and raises
   instead of waiting. Read the library before tuning the server.
+- **Port 6379 on this Mac belongs to a Homebrew Redis** (`brew services`), so `localhost:6379` is not Docker's Redis.
+  `docker compose stop redis` doesn't take the app's Redis down; point `REDIS_PORT` at a free port instead. → [P-26](docs/learning-journal/problems-and-solutions.md#p-26--stopping-dockers-redis-didnt-stop-the-apps-redis)
 - **Port 5432 on this Mac belongs to a Homebrew Postgres 14**, not the Docker one, and it's too old for Django 6.1.
   Stop it (`brew services stop postgresql@14`) or map Docker to another port. → [P-04](docs/learning-journal/problems-and-solutions.md#p-04--makemigrations---check-warned-it-couldnt-connect-to-postgres)
 

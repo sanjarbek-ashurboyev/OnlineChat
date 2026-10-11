@@ -55,7 +55,7 @@ window, and requests work again.
 |---|---|---|---|---|
 | `POST /auth/login/` | `login_ip` | 20/min | IP | One machine guessing many accounts |
 | `POST /auth/login/` | `login_phone` | 5/min | Phone number | Many machines guessing one account |
-| `POST /auth/register/` | `register_ip` | 5/hour | IP | Mass fake accounts |
+| `POST /auth/register/` | `register_ip` | 5/hour | IP, even when signed in (session 019) | Mass fake accounts |
 | `POST /auth/token/refresh/` | `refresh` | 30/min | IP | Cheap to call, no reason to call often |
 | `GET /users/<id>/` | `profile_read` | 120/min | User | Walking every id |
 | `POST /chats/` | `chat_create` | 30/hour | User | Messaging everyone |
@@ -64,13 +64,29 @@ window, and requests work again.
 
 The DRF classes we use:
 - **`ScopedRateThrottle`**: counts a signed-in user by their id, and anyone else by IP. The rate comes from
-  the view's `throttle_scope`. One scope per view.
+  the view's `throttle_scope`. One scope per view. We import our own fail-open copy from `accounts/throttles.py`.
+- **`RegisterIPThrottle`** (ours, session 019): always counts by IP. With `ScopedRateThrottle`, a request carrying any
+  valid token was counted per *user*, so a token bought a fresh registration allowance.
 - **`AnonRateThrottle`**: counts by IP, only for requests that aren't signed in. Our `LoginIPThrottle`
   subclasses it. The login view has no authentication, so every login request counts.
 - **`SimpleRateThrottle`**: the base class. Our `LoginPhoneThrottle` subclasses it and overrides
   `get_cache_key` to count by the phone number in the request body (`accounts/throttles.py`).
 
 The rates live in `root/settings.py`, so changing a limit doesn't need a code change.
+
+**Which IP?** DRF reads `REMOTE_ADDR` (the machine that opened the connection) or `X-Forwarded-For` (a header
+anyone can write), depending on `NUM_PROXIES`:
+
+| `NUM_PROXIES` | IP used | Safe when |
+|---|---|---|
+| unset (`None`), DRF's default | the **whole** `X-Forwarded-For` header, if present | never: the client chooses its own "IP" |
+| `0` (ours, by default) | `REMOTE_ADDR` | clients connect straight to Django |
+| `1` | the **last** entry of `X-Forwarded-For` | exactly one proxy, which appends the client IP |
+
+Set it with `DJANGO_NUM_PROXIES` in `.env` ([decision 005](../decisions/005-client-ip-and-throttle-outages.md)).
+
+**When Redis is down**, every throttle lets the request through and logs a warning (`FailOpenMixin`), so login
+keeps working. Plan Decision 0.2 chose this over a 503.
 
 ### WebSocket frames: a token bucket per socket (T-04)
 
@@ -111,8 +127,11 @@ WAF later. They stack: each layer catches what the others can't see.
 - **Limiting one path to an action but not the other.** Our messages can be sent over the socket *or* REST.
   T-04 limited only the socket, so the limit could be skipped ([P-20](../problems-and-solutions.md#p-20--two-doors-one-lock-auth-and-rate-limits-only-on-one-transport)).
 - **Counting the proxy instead of the client.** Behind nginx or a load balancer, every request comes from
-  the proxy's IP, so all users share one counter. Set DRF's `NUM_PROXIES` when a proxy is added. We have
-  no proxy yet.
+  the proxy's IP, so all users share one counter. Set `DJANGO_NUM_PROXIES` to the number of proxies.
+- **Leaving `NUM_PROXIES` unset because "there's no proxy yet".** Unset doesn't mean "no proxy"; it means "trust
+  the header", and any client can send one ([P-25](../problems-and-solutions.md#p-25--a-forged-x-forwarded-for-header-reset-the-login-limit)).
+- **Keying an IP limit with a class that switches to the user when signed in.** `ScopedRateThrottle` does; a token
+  then resets the counter. Use a throttle that always uses the IP.
 - **Per-IP limits that are too strict.** Mobile carriers and offices put many people behind one IP. Keep IP
   limits generous and per-account limits strict.
 - **Not normalising the key.** `90 123 45 01` and `+998901234501` are the same account. Without

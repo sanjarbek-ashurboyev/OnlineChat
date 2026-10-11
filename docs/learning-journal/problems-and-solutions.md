@@ -396,3 +396,28 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   first. The delete runs inside `transaction.atomic()` with the create. 5 tests in `chats/test_loadtest_seed.py`.
 - **Lesson:** fake data needs a marker real data *can't* have. And never delete anything before you know the
   operation can finish.
+
+## P-25 · A forged `X-Forwarded-For` header reset the login limit
+
+- **Session:** [019](sessions/019-account-security.md)
+- **Observed:** Codex audit H-02: 21 failed logins from one `REMOTE_ADDR`, each with a different `X-Forwarded-For`,
+  all answered 401; the 21st should be 429. Reproduced by a test, and against `runserver` with `curl`.
+- **Root cause (Confirmed, by reading DRF 3.x `BaseThrottle.get_ident` and the test):** with `NUM_PROXIES` unset,
+  DRF returns the whole `X-Forwarded-For` header as the client's identity whenever it's present. Session 009 had
+  read "set `NUM_PROXIES` when a proxy arrives" as "not needed until then", but unset means "trust the header".
+- **Fix:** `REST_FRAMEWORK['NUM_PROXIES']` from `DJANGO_NUM_PROXIES`, default `0` (use `REMOTE_ADDR`).
+  [Decision 005](decisions/005-client-ip-and-throttle-outages.md).
+- **Lesson:** a library default is a choice someone made for you. Find out what "unset" does before relying on it.
+
+## P-26 · Stopping Docker's Redis didn't stop the app's Redis
+
+- **Session:** [019](sessions/019-account-security.md)
+- **Observed:** to test login with Redis down, I ran `docker compose stop redis`. Login still answered 429, so the
+  throttle was still counting.
+- **Root cause (Confirmed, `lsof -iTCP:6379 -sTCP:LISTEN`):** a Homebrew Redis (`brew services`, `redis-server`) listens
+  on `127.0.0.1:6379`. `.env` points at `localhost:6379`, so the app talks to Homebrew's Redis, not Docker's. Same
+  pattern as the Homebrew Postgres in [P-04](#p-04--makemigrations---check-warned-it-couldnt-connect-to-postgres).
+  Not checked: which Redis earlier "real Redis" test runs used. Probably Homebrew's too.
+- **Fix (for the test):** started a second server with `REDIS_PORT=6390`, where nothing listens. Old code: 500;
+  new code: 401. The Homebrew service was left running; whether to keep it is your call.
+- **Lesson:** before testing "service X is down", check which process the app is really connected to.

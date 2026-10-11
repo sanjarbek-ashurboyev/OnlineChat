@@ -6,9 +6,9 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.generics import ListCreateAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
+from accounts.throttles import ScopedRateThrottle
 from chats import presence
 from chats.consumers import broadcast_message
 from chats.models import Block, Chat, Message
