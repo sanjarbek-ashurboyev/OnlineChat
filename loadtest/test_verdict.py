@@ -41,13 +41,17 @@ class VerdictTests(TestCase):
         self.assertEqual(problems(healthy_row(poll_p95_ms=301), PLAN), ['chat list p95 301ms > 300ms'])
         self.assertEqual(problems(healthy_row(delivery_p95_ms=301), PLAN), ['delivery p95 301ms > 300ms'])
 
-    def test_more_than_one_error_in_a_thousand_fails(self):
-        self.assertEqual(problems(healthy_row(lost_messages=2), PLAN), [])  # 0.1% is allowed
-        self.assertEqual(problems(healthy_row(lost_messages=3), PLAN), ['3/2000 messages got no echo'])
-        self.assertEqual(problems(healthy_row(undelivered=3), PLAN),
-                         ['3/2000 messages never reached the recipient'])
-        self.assertEqual(problems(healthy_row(connected=998), PLAN), ['2/1000 users not connected'])
+    def test_errors_must_stay_under_one_in_a_thousand(self):
+        # The plan says "errors < 0.1%", so exactly 0.1% fails (Codex audit L-01).
+        self.assertEqual(problems(healthy_row(lost_messages=1), PLAN), [])
+        self.assertEqual(problems(healthy_row(lost_messages=2), PLAN), ['2/2000 messages got no echo'])
+        self.assertEqual(problems(healthy_row(undelivered=2), PLAN),
+                         ['2/2000 messages never reached the recipient'])
+        self.assertEqual(problems(healthy_row(connected=999), PLAN), ['1/1000 users not connected'])
         self.assertEqual(problems(healthy_row(poll_errors=2), PLAN), ['2/1302 chat list requests failed'])
+
+    def test_a_zero_error_limit_still_passes_a_clean_step(self):
+        self.assertEqual(problems(healthy_row(), SimpleNamespace(**{**vars(PLAN), 'max_error_rate': 0})), [])
 
     def test_percentiles(self):
         self.assertIsNone(pct([], 95))

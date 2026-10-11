@@ -18,7 +18,8 @@ def problems(row, limits):
     max_errors = limits.max_error_rate
 
     def too_many(bad, total, what):
-        if total and bad / total > max_errors:
+        # The error rate must stay *under* the limit, so reaching it fails.
+        if bad and bad / total >= max_errors:
             found.append(f'{bad}/{total} {what}')
 
     too_many(row['users'] - row['connected'], row['users'], 'users not connected')

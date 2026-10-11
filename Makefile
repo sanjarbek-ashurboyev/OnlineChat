@@ -14,5 +14,6 @@ up:
 down:
 	docker compose down
 
+# Uses the container's own settings, so a non-default DB_USER/DB_NAME in .env works too.
 psql:
-	docker compose exec db psql -U onlinechat_user -d onlinechat
+	docker compose exec db sh -c 'exec psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'
