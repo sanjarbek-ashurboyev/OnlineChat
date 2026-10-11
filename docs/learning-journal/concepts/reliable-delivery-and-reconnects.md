@@ -87,6 +87,13 @@ bumps; `api()` and `refreshAccess()` remember it when they start, and an answer 
 **dropped**: it returns a promise that never settles, so the caller's next step (draw the chats, save
 the tokens) never runs.
 
+### Read receipts as a boundary (session 022)
+
+"Read" is a statement about the screen. The page sends `up_to`, the newest message id it has drawn; the server
+marks the other person's messages with `id <= up_to` and tells both sides `{type: 'read', up_to}`; the sender ticks
+✓✓ only up to that id. A receipt can be lost like any event, so the chat list also carries `peer_read_up_to`, and
+the 45 s poll (or a reconnect) repairs the ticks.
+
 ## 6. Alternatives
 
 | Option | How | Why not now |

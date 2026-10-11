@@ -1,6 +1,7 @@
-from django.db.models import Count, F, OuterRef, Q, Subquery
+import logging
+
+from django.db.models import Count, F, Max, OuterRef, Q, Subquery
 from django.shortcuts import get_object_or_404
-from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.generics import ListCreateAPIView
@@ -10,9 +11,16 @@ from rest_framework.views import APIView
 
 from accounts.throttles import ScopedRateThrottle
 from chats import presence
-from chats.consumers import broadcast_message
+from chats.consumers import broadcast_message, broadcast_read, mark_read
 from chats.models import Block, Chat, Message
-from chats.serializers import ChatCreateSerializer, ChatSerializer, MessageSerializer
+from chats.serializers import (
+    ChatCreateSerializer,
+    ChatSerializer,
+    MessageSerializer,
+    ReadSerializer,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def chats_for(user):
@@ -48,6 +56,7 @@ class ChatListCreateAPIView(ListCreateAPIView):
                     'messages',
                     filter=Q(messages__is_read=False) & ~Q(messages__sender=me),
                 ),
+                peer_read_up_to=Max('messages__id', filter=Q(messages__sender=me, messages__is_read=True)),
             )
             .order_by(F('last_message_at').desc(nulls_last=True), '-created_at')
         )
@@ -125,19 +134,26 @@ class MessageListCreateAPIView(ListCreateAPIView):
             raise PermissionDenied("You can't send messages in this chat.")
 
         message = serializer.save(chat=chat, sender=me)
-        broadcast_message(message, chat=chat)
+        try:
+            broadcast_message(message, chat=chat)
+        except Exception:
+            # It's saved: answer 201, or the sender retries and it's there twice. Open sockets
+            # miss it; they find it through the gap fetch or the chat list (Codex audit M-04).
+            logger.exception('broadcast failed for message %s', message.pk)
 
 
-@extend_schema(tags=['chats'], request=None, responses={200: None})
+@extend_schema(tags=['chats'], request=ReadSerializer, responses={200: None})
 class MarkChatReadAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, chat_id):
         chat = get_object_or_404(chats_for(request.user), pk=chat_id)
-        updated = (
-            chat.messages
-            .filter(is_read=False)
-            .exclude(sender=request.user)
-            .update(is_read=True, read_at=timezone.now())
-        )
+        body = ReadSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        up_to = body.validated_data['up_to']
+        updated = mark_read(chat, request.user, up_to)
+        try:
+            broadcast_read(chat, request.user, up_to, updated)
+        except Exception:
+            logger.exception('read broadcast failed for chat %s', chat.pk)  # it's saved; see M-04 above
         return Response({'marked_read': updated})

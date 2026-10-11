@@ -93,6 +93,9 @@ class EchoConsumer(AsyncWebsocketConsumer):
 - **Forgetting that group membership expires.** `channels_redis` drops a member after `group_expiry`
   (24 h by default). A socket open longer stays connected but gets nothing. Ours close after at most 12 h
   (session 020).
+- **Reporting a failed broadcast as a failed save.** Save first, then broadcast; if the broadcast raises, the
+  message *is* saved. Answer success (REST 201, or an echo to the sender's own socket) and log it; others recover it
+  from the database. Otherwise the sender retries and it's there twice (session 022).
 - **Check-then-act across two Redis calls.** "Count, then add" lets two sockets connecting at once both see
   4 and both get in (we measured 8 of 8 admitted). Do both in one step: a Lua script runs alone in Redis
   (`presence.admit`).

@@ -21,10 +21,13 @@ class ChatSerializer(ModelSerializer):
     participant = SerializerMethodField()
     last_message = SerializerMethodField()
     unread_count = IntegerField(read_only=True)
+    # The newest of my messages the other person has read, or null. A client that missed read
+    # receipts while offline repairs its ticks from this (Codex audit M-08).
+    peer_read_up_to = IntegerField(read_only=True, allow_null=True)
 
     class Meta:
         model = Chat
-        fields = ['id', 'participant', 'last_message', 'unread_count', 'created_at']
+        fields = ['id', 'participant', 'last_message', 'unread_count', 'peer_read_up_to', 'created_at']
 
     def get_participant(self, obj):
         me = self.context['request'].user
@@ -37,6 +40,10 @@ class ChatSerializer(ModelSerializer):
         if text is None:
             return None
         return {'text': text, 'created_at': getattr(obj, 'last_message_at', None)}
+
+
+class ReadSerializer(Serializer):
+    up_to = IntegerField(min_value=0, help_text='Id of the newest message on screen; later ones stay unread.')
 
 
 class ChatCreateSerializer(Serializer):
