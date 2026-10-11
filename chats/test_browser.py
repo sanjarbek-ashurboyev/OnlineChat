@@ -8,6 +8,7 @@ python manage.py test chats.test_browser.
 import json
 import multiprocessing
 import os
+import re
 import unittest
 
 from channels.testing import ChannelsLiveServerTestCase
@@ -107,7 +108,8 @@ class SwitchingChatsTests(BrowserTestCase):
 
         page = self.open_app()
         held = []
-        page.route(f'**/api/v1/chats/{self.chat.id}/messages/?page=1', lambda route: held.append(route))
+        page.route(re.compile(rf'/api/v1/chats/{self.chat.id}/messages/(\?page=1)?$'),
+                   lambda route: held.append(route))
         page.get_by_role('button', name='User 2').click()
         page.wait_for_timeout(200)  # A's request is now waiting in `held`
         page.get_by_role('button', name='User 3').click()
@@ -142,6 +144,27 @@ class ChatListTests(BrowserTestCase):
             other = make_user(n)
             chat, _ = Chat.objects.get_or_create_chat(self.me, other)
             self.say(chat, other, 'hi')
+
+    def test_clicking_show_more_twice_fetches_the_next_page_once(self):
+        # Codex audit M-10: two clicks both fetched page 2 and both advanced, so page 3 was skipped.
+        requested, held = [], []
+
+        def hold_more(route):
+            requested.append(route.request.url)
+            held.append(route)
+
+        page = self.open_app()
+        page.route(re.compile(r'/api/v1/chats/\?page='), hold_more)
+        more = page.get_by_role('button', name='Show more chats')
+        more.click()
+        more.click(force=True)   # force: a disabled button must ignore it, not Playwright
+        self.wait_until(page, lambda: held)
+        page.wait_for_timeout(300)
+        for route in held:
+            route.continue_()
+
+        expect(page.locator('#chat-list li')).to_have_count(51)
+        self.assertEqual(len(requested), 1)
 
     def test_chats_after_the_first_page_can_be_shown(self):
         # Codex #5.
@@ -450,3 +473,82 @@ class ReadReceiptTests(BrowserTestCase):
         page.clock.fast_forward(46_000)   # the chat list poll
 
         expect(page.locator('#message-rows .row.out .meta')).to_contain_text('✓✓')
+
+
+class OrderingTests(BrowserTestCase):
+    """Codex audit M-03, M-09, M-10: messages show in order, gaps get filled, failed pages are retried."""
+
+    def keep_sockets(self, sockets):
+        def handler(ws):
+            server = ws.connect_to_server()
+            sockets.append(ws)
+            ws.on_message(server.send)
+            server.on_message(ws.send)
+        return handler
+
+    def live(self, ws, message):
+        """Deliver `message` to the page as the server's socket would."""
+        ws.send(json.dumps({'type': 'message', 'id': message.id, 'chat_id': message.chat_id,
+                            'sender_id': message.sender_id, 'text': message.text,
+                            'created_at': message.created_at.isoformat(), 'is_read': False, 'read_at': None}))
+
+    def test_a_live_message_that_beats_the_history_still_lands_last(self):
+        # M-09: it used to be drawn first, above the older history.
+        self.say(self.chat, self.friend, 'older 1', 'older 2')
+        sockets, held = [], []
+        page = self.open_app(setup=lambda p: p.route_web_socket('**/ws/inbox/**', self.keep_sockets(sockets)))
+        page.route(re.compile(rf'/api/v1/chats/{self.chat.id}/messages/(\?page=1)?$'), lambda route: held.append(route))
+        page.get_by_role('button', name='User 2').click()
+        self.wait_until(page, lambda: held)
+
+        self.say(self.chat, self.friend, 'newest')
+        self.live(sockets[0], Message.objects.get(text='newest'))
+        expect(page.locator('#message-rows .row')).to_have_count(1)
+        held[0].continue_()
+
+        expect(page.locator('#message-rows .row')).to_have_count(3)
+        self.assertEqual(self.rows(page), ['older 1', 'older 2', 'newest'])
+
+    def test_a_message_missed_in_the_middle_is_fetched_after_a_reconnect(self):
+        # M-03: the gap fetch started after the newest message seen, so a hole before it stayed a hole.
+        self.say(self.chat, self.friend, 'one')
+        sockets = []
+        page = self.open_app(setup=lambda p: p.route_web_socket('**/ws/inbox/**', self.keep_sockets(sockets)))
+        page.get_by_role('button', name='User 2').click()
+        expect(page.locator('#message-rows .row')).to_have_count(1)
+
+        self.say(self.chat, self.friend, 'two (its live event was lost)', 'three')
+        self.live(sockets[0], Message.objects.get(text='three'))
+        expect(page.locator('#message-rows .row')).to_have_count(2)
+
+        sockets[0].close(code=1012, reason='server restart')   # the page reconnects and catches up
+        self.wait_until(page, lambda: len(sockets) > 1, timeout=10)
+
+        expect(page.locator('#message-rows .row')).to_have_count(3)
+        self.assertEqual(self.rows(page), ['one', 'two (its live event was lost)', 'three'])
+
+    def test_a_failed_older_page_is_retried_not_skipped(self):
+        # M-10: the page counter moved on before the answer came, so a failure skipped a page.
+        self.say(self.chat, self.friend, *[f'm{n:03}' for n in range(1, 121)])
+        failed = []
+
+        def fail_once(route):
+            if failed:
+                route.continue_()
+            else:
+                failed.append(route)
+                route.fulfill(status=500, body='')
+
+        page = self.open_app()
+        page.get_by_role('button', name='User 2').click()
+        expect(page.locator('#message-rows .row')).to_have_count(50)
+        page.route(re.compile(r'/messages/\?(cursor=|page=[2-9])'), fail_once)
+        older = page.get_by_role('button', name='Load older messages')
+
+        older.click()
+        self.wait_until(page, lambda: failed)
+        page.wait_for_timeout(300)
+        older.click()
+
+        expect(page.locator('#message-rows .row')).to_have_count(100)
+        self.assertEqual(self.rows(page)[0], 'm021')

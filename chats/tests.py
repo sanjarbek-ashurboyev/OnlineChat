@@ -194,6 +194,18 @@ class MessageTests(FakePresenceMixin, TestCase):
     def test_blank_messages_are_rejected(self, broadcast):
         self.assertEqual(self.send('   ').status_code, 400)
 
+    def test_older_history_stays_put_when_new_messages_arrive(self, broadcast):
+        # Codex audit M-11: page 2 was "skip 50 from the newest", so 50 new messages made it repeat page 1.
+        for n in range(60):
+            say(self.chat, self.friend, f'old {n}')
+        first = client_for(self.me).get(self.url).data
+        for n in range(50):
+            say(self.chat, self.friend, f'new {n}')
+
+        older = client_for(self.me).get(first['next']).data
+
+        self.assertEqual([m['text'] for m in older['results']], [f'old {n}' for n in range(9, -1, -1)])
+
     def test_after_returns_only_newer_messages_oldest_first(self, broadcast):
         # COR-1: how a reconnecting client fetches what the socket missed.
         seen = say(self.chat, self.friend, 'seen', minutes_ago=3)

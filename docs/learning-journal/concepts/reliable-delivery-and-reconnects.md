@@ -87,6 +87,12 @@ bumps; `api()` and `refreshAccess()` remember it when they start, and an answer 
 **dropped**: it returns a promise that never settles, so the caller's next step (draw the chats, save
 the tokens) never runs.
 
+### The sync boundary (session 023)
+
+Catch-up used to start after the newest message *seen*. A message lost live before it was then never fetched.
+`state.syncedUpTo` is the newest id we know we hold **everything** up to: the first history page sets it, catch-up
+(`?after=syncedUpTo`) moves it, live messages don't. Catch-up runs on every connect, the first one included.
+
 ### Read receipts as a boundary (session 022)
 
 "Read" is a statement about the screen. The page sends `up_to`, the newest message id it has drawn; the server
@@ -106,6 +112,8 @@ the 45 s poll (or a reconnect) repairs the ticks.
 
 - **Treating the live stream as complete.** Notifications are hints; the database is the truth.
 - **Using a timestamp as the cursor.** Equal timestamps get skipped or repeated. Use a growing id.
+- **Catching up from the newest message seen.** One lost live event before it becomes a permanent hole. Catch up
+  from a boundary only fetches move (`syncedUpTo`).
 - **Forgetting to de-duplicate.** A message can arrive by socket *and* by fetch.
 - **Reconnecting without jitter.** Every deploy becomes a self-inflicted load spike.
 - **Waiting forever for an answer.** Every "wait for X" needs a deadline and a plan for when it passes.

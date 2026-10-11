@@ -1,6 +1,6 @@
 # Progress
 
-*Updated: 2026-10-11 (session 022).*
+*Updated: 2026-10-11 (session 023).*
 
 **Status words:** **Done** = code written, tests or checks run and passing, committed.
 **Partial** = some of the acceptance criteria are met. **Blocked** = waiting on something outside
@@ -40,6 +40,7 @@ were already fixed on `main` before this journal started.
 | Codex audit 2 (H-01, M-01, M-02, M-05): sockets close at token expiry / disabled account / 12 h; atomic 5-socket limit (Lua); bad JSON and NUL/surrogate text get errors | **Done**, merged as [PR #30](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/30) | 7 consumer tests failed first (2 failures, 6 errors), then pass; `make test` 112 OK (8 skipped); real Postgres + Redis 118 OK; Ruff clean; real browser: closed at 18.6 s with 4401, renewed, reconnected, gap message recovered | [session 020](sessions/020-websocket-hardening.md) |
 | Codex audit 2 (H-04, H-06, M-12, L-03): logout drops the old session's work; lost echo → history check; dead socket → reconnect; network errors retried, not signed out; real 429 text | **Done**, merged as [PR #31](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/31) | 10 browser tests failed first (all 10), then pass; browser suite 16 OK twice; `make test` 112 OK (9 skipped); real Postgres + Redis 128 OK; Ruff clean | [session 021](sessions/021-frontend-session-lifecycle.md) |
 | Codex audit 2 (M-04, M-06, M-07, M-08): a saved message is never reported failed; reads carry `up_to`, shared by socket and REST; `peer_read_up_to` repairs lost receipts | **Done** on branch, PR open | 15 new tests failed first (REST, socket, browser); browser suite 19 OK; `make test` 121 OK (10 skipped); real Postgres + Redis 140 OK; Ruff clean | [session 022](sessions/022-message-receipts.md) |
+| Codex audit 2 (M-03, M-09, M-10, M-11): rows in id order; catch-up from a sync boundary on every connect; one page request at a time; history by cursor | **Done** on branch, PR open (stacked on #32) | 5 new tests failed first with the audit's numbers; browser suite 23 OK; `make test` 122 OK (11 skipped); real Postgres + Redis 145 OK twice; Ruff clean | [session 023](sessions/023-message-ordering.md) |
 
 Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), and 50/50 tests pass locally.
 
@@ -47,7 +48,7 @@ Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), a
 
 | What | How | Result |
 |---|---|---|
-| Test suite | `make test` (`manage.py test --settings=root.settings_test`) | 140 on `fix-message-receipts`, all pass on real Postgres + Redis. Earlier: 128 on `fix-frontend-session-lifecycle`. On SQLite: "Ran 89, OK (skipped=6)": the 2 real-Redis tests and the 4 browser test classes (a class skipped in `setUpClass` counts once) |
+| Test suite | `make test` (`manage.py test --settings=root.settings_test`) | 145 on `fix-message-ordering`, all pass on real Postgres + Redis. Earlier: 140 on `fix-message-receipts`. On SQLite: "Ran 89, OK (skipped=6)": the 2 real-Redis tests and the 4 browser test classes (a class skipped in `setUpClass` counts once) |
 | Test suite on real services | CI job `test-postgres-redis` (Postgres 17, Redis 7, normal settings) | 53 pass (T-11 branch) |
 | No secrets in history | CI job `secrets` (gitleaks 8.30.1, custom `django-secret-key` rule) | Clean; a planted key is caught |
 | Lint | `ruff check .` (version 0.16.10, as in CI) | Clean |
@@ -61,7 +62,7 @@ Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), a
 
 See the [audit](../scaling/01-audit.md) and its status update. The most important still-open items:
 - SEC-3/4/5 and COR-3 fixed (T-03, T-04, merged). COR-1/4/5 fixed on the T-09 branch, checked in a browser. The redis-py 8 regression (quiet sockets crash) is fixed in PR #21.
-- **Codex audit 2** ([checklist](../scaling/05-codex-audit-2026-10-11.md)): 31 findings + 7 risks; 4 fixed in session 018, 5 in 019, 4 in 020, 4 in 021, 4 in 022. Next: ordering and paging (M-03, M-09, M-10, M-11). The load tester should reconnect at token expiry now that browsers do (decision 006).
+- **Codex audit 2** ([checklist](../scaling/05-codex-audit-2026-10-11.md)): 31 findings + 7 risks; 4 fixed in session 018, 5 in 019, 4 in 020, 4 in 021, 4 in 022, 4 in 023. Left: M-13, M-14, M-15, M-16, M-20, M-22, and the risks R-01…R-07. The load tester should reconnect at token expiry now that browsers do (decision 006).
 - **Codex review #9** (REST read receipts) fixed in session 022 (M-07). #7 (24 h group expiry) fixed in session 020 (M-02). #8 (load tester) fixed in session 017; the baseline rerun is pending. Session 014's capacity numbers need a rerun after #8.
 - **PERF-1/2/3:** one DB thread per process, plus a new DB connection per call (Stage 1).
 - Dependabot backlog cleared: #8–#11 merged; #12 and #13 replaced by #16 ([P-14](problems-and-solutions.md#p-14--dependabot-prs-that-could-never-be-merged)).

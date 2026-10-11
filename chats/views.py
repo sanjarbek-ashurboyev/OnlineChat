@@ -5,6 +5,7 @@ from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.generics import ListCreateAPIView
+from rest_framework.pagination import CursorPagination, PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -87,6 +88,12 @@ class ChatListCreateAPIView(ListCreateAPIView):
         return Response(output.data, status=201)
 
 
+class HistoryPagination(CursorPagination):
+    """Newest first, by id. `next` points before the oldest message returned, so new messages
+    can't shift it the way they shift an offset page (Codex audit M-11)."""
+    ordering = '-id'
+
+
 @extend_schema(tags=['chats'])
 @extend_schema_view(get=extend_schema(parameters=[
     OpenApiParameter('after', int, description='Only messages with a larger id, oldest first. '
@@ -101,6 +108,15 @@ class MessageListCreateAPIView(ListCreateAPIView):
         # Only sending is limited; reading history and catching up after a reconnect are not.
         return [ScopedRateThrottle()] if self.request.method == 'POST' else []
 
+    @property
+    def paginator(self):
+        # History pages by cursor. The ?after= catch-up keeps numbered pages: its client only
+        # checks whether there's a `next`.
+        if not hasattr(self, '_paginator'):
+            catching_up = 'after' in self.request.query_params
+            self._paginator = PageNumberPagination() if catching_up else HistoryPagination()
+        return self._paginator
+
     def get_chat(self):
         return get_object_or_404(chats_for(self.request.user),
                                  pk=self.kwargs['chat_id'])
@@ -109,9 +125,9 @@ class MessageListCreateAPIView(ListCreateAPIView):
         messages = self.get_chat().messages
         after = self.request.query_params.get('after')
         if after is None:
-            # Newest first, so page 1 is what the chat window actually shows.
-            # The client reverses for display and pages backwards for history.
-            return messages.order_by('-created_at')
+            # Newest first, so the first page is what the chat window actually shows. By id, not
+            # created_at: ids never tie, so the cursor is exact.
+            return messages.order_by('-id')
 
         # ?after=<id>: what a reconnecting client missed (COR-1), oldest first.
         try:
