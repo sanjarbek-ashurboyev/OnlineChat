@@ -59,6 +59,8 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
   Reproduce with `multiprocessing.set_start_method('fork', force=True)`. → [P-22](docs/learning-journal/problems-and-solutions.md#p-22--browser-tests-passed-on-the-mac-but-never-connected-in-ci)
 - **After an `await` in `app.js`, the user may have moved on.** Check the answer still belongs to what's on screen
   before drawing it. → [P-21](docs/learning-journal/problems-and-solutions.md#p-21--four-frontend-bugs-with-no-tests-to-catch-them)
+- **In a `subTest` loop, keep every assertion of a case inside its `with self.subTest(...)`.** One outside it ends
+  the test at the first failure, and the later cases never run.
 - **Write the failing test first, and watch it fail.** When mocking, also assert the mock was called
   (`assert_awaited_once()`); otherwise the test can pass without testing anything.
 
@@ -80,6 +82,9 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
 - **`loadtest/tokens.json` holds live login tokens.** It's gitignored; keep it that way.
 
 ## Load testing
+
+- **Fake data must carry a marker real data *can't* have** (seed users use the invalid `+998000` range), and a
+  "replace" must check its arguments first and delete inside the same transaction. → [P-24](docs/learning-journal/problems-and-solutions.md#p-24--the-load-test-seed-command-could-delete-real-accounts)
 
 - **Before trusting a load test's "OK", make it fail on purpose** (e.g. block every pair so nothing is delivered).
   Our tester once passed a step with zero echoes. → [P-23](docs/learning-journal/problems-and-solutions.md#p-23--the-load-tester-could-pass-a-step-with-zero-echoes)

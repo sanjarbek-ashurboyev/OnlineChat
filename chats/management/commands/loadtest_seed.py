@@ -18,8 +18,9 @@ from rest_framework_simplejwt.tokens import AccessToken
 from accounts.models import User
 from chats.models import Chat, Message
 
-# Load test users are recognised by both, so a real user is never touched.
-PHONE_PREFIX = '+998990'
+# +998 00 is not a real Uzbek range: registration rejects these numbers as invalid,
+# so no real user can hold one. The marker is a second check.
+PHONE_PREFIX = '+998000'
 MARKER = 'loadtest'
 
 
@@ -48,18 +49,25 @@ class Command(BaseCommand):
         if not settings.DEBUG and not opts['force']:
             raise CommandError('DEBUG is off: this looks like production. Pass --force if it is not.')
 
-        deleted, _ = loadtest_users().delete()
         if opts['delete']:
+            deleted, _ = loadtest_users().delete()
             self.stdout.write(f'Removed {deleted} load test rows.')
             return
 
+        # Check everything before deleting anything.
         count = opts['users'] + opts['users'] % 2
         if not 2 <= count <= 999_999:
             raise CommandError('--users must be between 2 and 999999.')
+        if opts['messages'] < 0:
+            raise CommandError('--messages must be 0 or more.')
+        if opts['token_hours'] <= 0:
+            raise CommandError('--token-hours must be more than 0.')
 
         # Tokens are minted directly, so nobody logs in and the hash is never checked.
         password = make_password(None)
+        # One transaction: if creating the new users fails, the old ones come back.
         with transaction.atomic():
+            loadtest_users().delete()
             users = User.objects.bulk_create(
                 [User(phone_number=f'{PHONE_PREFIX}{i:06d}', first_name=MARKER,
                       password=password) for i in range(count)],

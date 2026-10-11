@@ -380,3 +380,19 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   and what's missing is lost. Online users are counted from each socket's own `closed` flag. Delivery to the
   recipient is measured. Rerunning the same experiments: 205/205 no echo → FAIL; step 2 → 0/40 connected.
 - **Lesson:** a test that can't fail proves nothing. Feed it a broken system and check it says so.
+
+## P-24 · The load-test seed command could delete real accounts
+
+- **Session:** [018](sessions/018-loadtest-seed-safety.md)
+- **Observed:** Codex audit H-05: in an isolated database, an ordinary account matching the seed markers was deleted by
+  `loadtest_seed --users 0`, which then failed with `CommandError`. Reproduced here by a test: a user registered as
+  `+998990000001` / `loadtest` disappeared after `loadtest_seed --delete`.
+- **Root causes (Confirmed, by the failing tests):**
+  - Seed users were recognised by `+998990` + first name `loadtest`. `phonenumbers` says `+998990…` numbers are
+    valid, and anyone can choose the name, so a real user could match both.
+  - The delete ran before the arguments were checked.
+  - The delete ran outside the transaction that creates the replacements.
+- **Fix:** the seed range is `+998000…`, which `phonenumbers` (and so registration) rejects. Arguments are checked
+  first. The delete runs inside `transaction.atomic()` with the create. 5 tests in `chats/test_loadtest_seed.py`.
+- **Lesson:** fake data needs a marker real data *can't* have. And never delete anything before you know the
+  operation can finish.

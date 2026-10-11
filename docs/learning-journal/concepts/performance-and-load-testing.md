@@ -34,7 +34,8 @@ than they drain. Waiting time grows roughly like `busy / (1 - busy)`: 0.4/0.6 â‰
 
 ## 5. In our project
 - `chats/management/commands/loadtest_seed.py` creates paired fake users and writes their tokens
-  to `loadtest/tokens.json` (gitignored, because the tokens are live).
+  to `loadtest/tokens.json` (gitignored, because the tokens are live). Since session 018 its users have
+  phone numbers in `+998000â€¦`, a range registration rejects, so a real account can never be mistaken for one.
 - `loadtest/run.py` uses `aiohttp` to simulate browsers exactly like `app.js`. It reports message,
   ping and chat-list p50/p95/p99 per step, and marks a step failed if p95 or the error rate passes a limit.
 - **How a step is judged (since session 017, `loadtest/verdict.py`):**
@@ -85,6 +86,8 @@ than they drain. Waiting time grows roughly like `busy / (1 - busy)`: 0.4/0.6 â‰
 - **Blaming one cause when two could explain the result (a confounder).** Find the experiment that separates them.
   Here: the same 300-user step from the server machine itself took 90 ms instead of 616 ms.
 - **Optimising before measuring**, or fixing several things at once so you can't tell which helped.
+- **Marking fake users with something a real user could also have** (a real phone range, a name). The cleanup then
+  deletes real people. Use a marker real data can't have, or a separate database ([P-24](../problems-and-solutions.md#p-24--the-load-test-seed-command-could-delete-real-accounts)).
 
 ## 8. When to use it
 Before launch, before and after any performance change, and before a planned traffic increase.

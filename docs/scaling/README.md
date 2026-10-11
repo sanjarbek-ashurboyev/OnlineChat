@@ -41,6 +41,7 @@ Written 2026-10-09 against commit `3bd73a8`.
 | [02-plan.md](02-plan.md) | Unknowns, workload model, capacity model, test methodology, Stage 0, Stage 1 (1,000 online), Stage 2 (10,000 online), decisions with ADRs, exit criteria |
 | [03-operations.md](03-operations.md) | Risk register, prioritised backlog (T-01…T-37), testing, deploy/migration/rollback, backup/DR, cost methodology, readiness checklists |
 | [04-interview-guide.md](04-interview-guide.md) | Claims tracker (implemented vs measured vs designed), project story, interview Q&A at 3 levels, understanding checks |
+| [05-codex-audit-2026-10-11.md](05-codex-audit-2026-10-11.md) | Codex's second audit (31 confirmed findings, 7 risks) as a checklist; ticked as fixes land |
 
 ## Start here (this week)
 

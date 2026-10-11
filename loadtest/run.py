@@ -101,32 +101,40 @@ class SimUser:
             await self.ws.close()
 
     async def read(self):
-        async for frame in self.ws:
-            if frame.type != aiohttp.WSMsgType.TEXT:
-                continue
-            data = json.loads(frame.data)
-            kind = data.get('type')
-            now = time.perf_counter()
-            if kind == 'pong' and self.ping_sent is not None:
-                self.stats.ping_ms.append((now - self.ping_sent) * 1000)
-                self.ping_sent = None
-            elif kind == 'message':
-                if data.get('sender_id') == self.user_id:
-                    sent = self.pending.pop(data.get('text'), None)
-                    if sent is not None:
-                        self.stats.message_ms.append((now - sent) * 1000)
+        try:
+            async for frame in self.ws:
+                if frame.type != aiohttp.WSMsgType.TEXT:
                     continue
-                sent = self.run.to_deliver.pop(data.get('text'), None)
-                if sent is not None:
-                    self.stats.delivery_ms.append((now - sent) * 1000)
-                if self.active:
-                    # The open chat marks incoming messages read, like the browser does.
-                    await self.ws.send_str(json.dumps({'action': 'read', 'chat_id': self.chat_id}))
-            elif kind == 'error':
-                self.stats.server_errors += 1
-        self.closed = True
-        if not self.run.stopping:
-            self.stats.drops += 1
+                data = json.loads(frame.data)
+                kind = data.get('type')
+                now = time.perf_counter()
+                if kind == 'pong' and self.ping_sent is not None:
+                    self.stats.ping_ms.append((now - self.ping_sent) * 1000)
+                    self.ping_sent = None
+                elif kind == 'message':
+                    if data.get('sender_id') == self.user_id:
+                        sent = self.pending.pop(data.get('text'), None)
+                        if sent is not None:
+                            self.stats.message_ms.append((now - sent) * 1000)
+                        continue
+                    sent = self.run.to_deliver.pop(data.get('text'), None)
+                    if sent is not None:
+                        self.stats.delivery_ms.append((now - sent) * 1000)
+                    if self.active:
+                        # The open chat marks incoming messages read, like the browser does.
+                        await self.ws.send_str(json.dumps({'action': 'read', 'chat_id': self.chat_id}))
+                elif kind == 'error':
+                    self.stats.server_errors += 1
+        finally:
+            # Also when handling a frame raised: a dead socket must not count as connected,
+            # and the ping/poll/send loops must not keep using it.
+            self.closed = True
+            if not self.run.stopping:
+                self.stats.drops += 1
+            for task in self.tasks:
+                if task is not asyncio.current_task():
+                    task.cancel()
+            await self.ws.close()
 
     def partner_online(self):
         return any(u is not self and not u.closed for u in self.run.by_chat[self.chat_id])
@@ -354,7 +362,7 @@ def parse_args():
     p.add_argument('--max-poll-ms', type=float, default=300,
                    help='Chat list p95 above this fails the step.')
     p.add_argument('--max-error-rate', type=float, default=0.001,
-                   help='Share of failed connects, lost messages or failed requests that fails the step.')
+                   help='Failed connects, lost messages or failed requests must stay under this share.')
     p.add_argument('--message-timeout', type=float, default=10,
                    help='After each step, seconds to wait for in-flight messages before calling them lost.')
     p.add_argument('--connect-timeout', type=float, default=15)
