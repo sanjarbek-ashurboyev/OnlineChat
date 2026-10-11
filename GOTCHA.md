@@ -67,6 +67,8 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
   the test at the first failure, and the later cases never run.
 - **`page.evaluate` waits for a promise you return.** If the test holds that promise's request (`page.route`),
   it deadlocks. Start it with `void loadChats()` instead (session 021).
+- **In a browser test, don't call code that uses `async_to_sync` from the test thread** (e.g. a view that
+  broadcasts). Playwright's loop runs there, so it raises; our view's `except` hid it. Change the database directly.
 - **A Playwright route handler must be a Python function**, not a built-in like `held.append`: wrap it in a lambda.
 - **Write the failing test first, and watch it fail.** When mocking, also assert the mock was called
   (`assert_awaited_once()`); otherwise the test can pass without testing anything.

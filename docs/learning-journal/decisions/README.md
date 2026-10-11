@@ -12,6 +12,7 @@ choose differently. If new evidence changes a decision, update the file and say 
 | [005](005-client-ip-and-throttle-outages.md) | Which IP a throttle counts, and what it does when Redis is down | Accepted | [019](../sessions/019-account-security.md) |
 | [006](006-socket-rights-end-with-the-token.md) | An open WebSocket's rights end with its token | Accepted | [020](../sessions/020-websocket-hardening.md) |
 | [007](007-lost-echo-check-the-history.md) | When a message's echo doesn't come, check the history | Accepted | [021](../sessions/021-frontend-session-lifecycle.md) |
+| [008](008-read-up-to-boundary.md) | Read receipts carry a read-up-to boundary | Accepted | [022](../sessions/022-message-receipts.md) |
 
 The bigger scaling decisions are in the plan, [docs/scaling/02-plan.md](../../scaling/02-plan.md):
 - **Stage 0:** 0.1 where secrets live, 0.2 rate limiting, 0.3 making live delivery recoverable.

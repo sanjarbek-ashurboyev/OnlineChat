@@ -376,18 +376,57 @@ class ReadReceiptTests(InboxSocketTestCase):
         create = database_sync_to_async(Message.objects.create)
         await create(chat=self.chat, sender=self.bob, text='one')
         await create(chat=self.chat, sender=self.bob, text='two')
-        await create(chat=self.chat, sender=self.alice, text='mine')
+        mine = await create(chat=self.chat, sender=self.alice, text='mine')
         alice, bob = await self.open(self.alice), await self.open(self.bob)
 
-        await alice.send_json_to({'action': 'read', 'chat_id': self.chat.id})
+        await alice.send_json_to({'action': 'read', 'chat_id': self.chat.id, 'up_to': mine.id})
 
-        expected = {'type': 'read', 'chat_id': self.chat.id, 'by': self.alice.id, 'count': 2}
+        expected = {'type': 'read', 'chat_id': self.chat.id, 'by': self.alice.id,
+                    'up_to': mine.id, 'count': 2}
         self.assertEqual(await alice.receive_json_from(), expected)
         self.assertEqual(await bob.receive_json_from(), expected)
         unread = await database_sync_to_async(
             lambda: list(Message.objects.filter(is_read=False).values_list('text', flat=True))
         )()
         self.assertEqual(unread, ['mine'])
+        await self.close_all()
+
+
+    async def test_only_messages_up_to_the_one_displayed_are_marked(self):
+        # Codex audit M-06.
+        create = database_sync_to_async(Message.objects.create)
+        shown = await create(chat=self.chat, sender=self.bob, text='on screen')
+        await create(chat=self.chat, sender=self.bob, text='arrived meanwhile')
+        alice = await self.open(self.alice)
+
+        await alice.send_json_to({'action': 'read', 'chat_id': self.chat.id, 'up_to': shown.id})
+
+        self.assertEqual((await alice.receive_json_from())['count'], 1)
+        unread = await database_sync_to_async(
+            lambda: list(Message.objects.filter(is_read=False).values_list('text', flat=True)))()
+        self.assertEqual(unread, ['arrived meanwhile'])
+        await self.close_all()
+
+    async def test_a_read_without_a_valid_up_to_is_an_error(self):
+        alice = await self.open(self.alice)
+        for up_to in (None, 'x', -1, True):
+            with self.subTest(up_to=up_to):
+                await alice.send_json_to({'action': 'read', 'chat_id': self.chat.id, 'up_to': up_to})
+                reply = await alice.receive_json_from()
+                self.assertEqual((reply['type'], reply['detail']), ('error', 'up_to must be a message id.'))
+        await self.close_all()
+
+    async def test_a_read_over_rest_reaches_the_senders_socket(self):
+        # Codex audit M-07.
+        message = await database_sync_to_async(Message.objects.create)(chat=self.chat, sender=self.bob, text='hi')
+        bob = await self.open(self.bob)
+
+        response = await database_sync_to_async(client_for(self.alice).post)(
+            f'/api/v1/chats/{self.chat.id}/read/', {'up_to': message.id}, format='json')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(await bob.receive_json_from(), {
+            'type': 'read', 'chat_id': self.chat.id, 'by': self.alice.id, 'up_to': message.id, 'count': 1})
         await self.close_all()
 
 
@@ -421,3 +460,20 @@ class SocketLifetimeTests(InboxSocketTestCase):
         with mock.patch.object(consumers, 'MAX_SOCKET_SECONDS', 0.2):
             alice = await self.open(self.alice)
             self.assertEqual(await self.closed_by_server(alice), CLOSE_UNAUTHENTICATED)
+
+class BroadcastFailureTests(InboxSocketTestCase):
+    async def test_a_failed_broadcast_still_tells_the_sender_it_was_saved(self):
+        # Codex audit M-04: the consumer crashed after saving, so the sender saw no answer and retried.
+        alice = await self.open(self.alice)
+        failing = mock.AsyncMock(side_effect=ConnectionError('Redis is down'))
+
+        with mock.patch.object(get_channel_layer(), 'group_send', failing), \
+                self.assertLogs('chats.consumers', 'ERROR'):
+            await alice.send_json_to({'chat_id': self.chat.id, 'text': 'saved anyway'})
+            echo = await alice.receive_json_from()
+
+        failing.assert_awaited()
+        self.assertEqual((echo['type'], echo['text']), ('message', 'saved anyway'))
+        await alice.send_json_to({'action': 'ping'})
+        self.assertEqual(await alice.receive_json_from(), {'type': 'pong'}, 'socket still works')
+        await self.close_all()

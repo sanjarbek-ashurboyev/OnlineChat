@@ -392,3 +392,61 @@ class SessionLifecycleTests(BrowserTestCase):
         page.locator('#auth-submit').click()
 
         expect(page.locator('#auth-error')).to_have_text('Request was throttled. Expected available in 42 seconds.')
+
+
+class ReadReceiptTests(BrowserTestCase):
+    """Codex audit M-06 and M-08: ticks follow what was really on screen, and survive missed events."""
+
+    def ticks(self, page):
+        return page.locator('#message-rows .row.out .meta').evaluate_all(
+            'metas => metas.map(m => m.textContent.endsWith("✓✓") ? 2 : 1)')
+
+    def test_read_names_the_newest_message_on_screen(self):
+        self.say(self.chat, self.friend, 'one', 'two')
+        newest = Message.objects.get(text='two')
+        sent = []
+
+        def record(ws):
+            server = ws.connect_to_server()
+            ws.on_message(lambda frame: (sent.append(frame), server.send(frame)))
+            server.on_message(ws.send)
+
+        page = self.open_app(setup=lambda p: p.route_web_socket('**/ws/inbox/**', record))
+        page.get_by_role('button', name='User 2').click()
+
+        self.wait_until(page, lambda: any('"read"' in f for f in sent))
+        read = json.loads(next(f for f in sent if '"read"' in f))
+        self.assertEqual(read, {'action': 'read', 'chat_id': self.chat.id, 'up_to': newest.id})
+
+    def test_a_receipt_ticks_only_messages_up_to_its_boundary(self):
+        self.say(self.chat, self.me, 'seen', 'not yet')
+        seen = Message.objects.get(text='seen')
+        sockets = []
+
+        def keep(ws):
+            server = ws.connect_to_server()
+            sockets.append(ws)
+            ws.on_message(server.send)
+            server.on_message(ws.send)
+
+        page = self.open_app(setup=lambda p: p.route_web_socket('**/ws/inbox/**', keep))
+        page.get_by_role('button', name='User 2').click()
+        expect(page.locator('#message-rows .row')).to_have_count(2)
+
+        sockets[0].send(json.dumps({'type': 'read', 'chat_id': self.chat.id, 'by': self.friend.id,
+                                    'up_to': seen.id, 'count': 1}))
+
+        expect(page.locator('#message-rows .row.out .meta').first).to_contain_text('✓✓')
+        self.assertEqual(self.ticks(page), [2, 1])
+
+    def test_ticks_missed_while_the_receipt_was_lost_are_repaired(self):
+        self.say(self.chat, self.me, 'mine')
+        page = self.open_app(setup=lambda p: p.clock.install())
+        page.get_by_role('button', name='User 2').click()
+        expect(page.locator('#message-rows .row.out')).to_have_count(1)
+
+        # Read while this page heard nothing: like a receipt sent while it was reconnecting.
+        Message.objects.filter(text='mine').update(is_read=True)
+        page.clock.fast_forward(46_000)   # the chat list poll
+
+        expect(page.locator('#message-rows .row.out .meta')).to_contain_text('✓✓')

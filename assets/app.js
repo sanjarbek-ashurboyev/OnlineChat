@@ -193,6 +193,9 @@ async function loadChats() {
   state.chats = [...data.results, ...state.chats.filter((c) => !fresh.has(c.id))];
   if (state.chatPages === 1) $('more-chats').hidden = !data.next;
   renderChats();
+  // Receipts sent while our socket was down never arrive; the list says how far they got (M-08).
+  const active = data.results.find((c) => c.id === state.activeId);
+  if (active && active.peer_read_up_to) showReadUpTo(active.peer_read_up_to);
 }
 
 $('more-chats').addEventListener('click', async () => {
@@ -437,7 +440,17 @@ function socketSend(payload) {
 }
 
 function sendRead(chatId) {
-  socketSend({ action: 'read', chat_id: chatId });
+  // Only up to the newest message on screen: one still on its way stays unread (Codex audit M-06).
+  if (chatId !== state.activeId || !state.seenIds.size) return;
+  socketSend({ action: 'read', chat_id: chatId, up_to: Math.max(...state.seenIds) });
+}
+
+/** The other person has read our messages up to this id: show ✓✓ on those. */
+function showReadUpTo(upTo) {
+  document.querySelectorAll('#message-rows .row.out').forEach((row) => {
+    const meta = row.querySelector('.meta');
+    if (Number(row.dataset.id) <= upTo && meta.textContent.endsWith(' ✓')) meta.textContent += '✓';
+  });
 }
 
 /** A message arrived for a chat that isn't on screen: update its sidebar row. */
@@ -527,11 +540,7 @@ function connectInbox() {
         if (chat && chat.unread_count) { chat.unread_count = 0; renderChats(); }
         return;
       }
-      if (data.chat_id === state.activeId) {
-        document.querySelectorAll('#message-rows .row.out .meta').forEach((el) => {
-          if (el.textContent.endsWith(' ✓')) el.textContent += '✓';
-        });
-      }
+      if (data.chat_id === state.activeId) showReadUpTo(data.up_to);
       return;
     }
 

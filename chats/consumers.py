@@ -68,6 +68,35 @@ def broadcast_message(message, chat=None):
         async_to_sync(layer.group_send)(group_for_user(user_id), payload)
 
 
+def is_message_id(value):
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def mark_read(chat, reader, up_to):
+    """Mark the other person's messages read, up to id `up_to`: the newest one `reader` has on screen.
+
+    A message that arrived after that isn't read yet (Codex audit M-06). The socket and REST both
+    use this, and both tell the sender (M-07).
+    """
+    return (
+        chat.messages
+        .filter(is_read=False, id__lte=up_to)
+        .exclude(sender=reader)
+        .update(is_read=True, read_at=timezone.now())
+    )
+
+
+def read_event(chat, reader_id, up_to, count):
+    return {'type': 'chat.read', 'chat_id': chat.pk, 'by': reader_id, 'up_to': up_to, 'count': count}
+
+
+def broadcast_read(chat, reader, up_to, count):
+    """Tell both participants about a read. Safe to call from sync code (the REST view)."""
+    layer = get_channel_layer()
+    for user_id in (chat.user1_id, chat.user2_id):
+        async_to_sync(layer.group_send)(group_for_user(user_id), read_event(chat, reader.pk, up_to, count))
+
+
 class InboxConsumer(AsyncWebsocketConsumer):
     """One socket per signed-in user, carrying every chat they belong to."""
 
@@ -168,8 +197,12 @@ class InboxConsumer(AsyncWebsocketConsumer):
             return
 
         if action == 'read':
-            marked = await self.mark_read(chat.pk)
-            await self.notify_read(chat, marked)
+            up_to = payload.get('up_to')
+            if not is_message_id(up_to):
+                await self.send_error('up_to must be a message id.', chat_id=chat.pk)
+                return
+            marked = await database_sync_to_async(mark_read)(chat, self.user, up_to)
+            await self.notify_read(chat, up_to, marked)
             return
 
         text = payload.get('text') or ''
@@ -189,19 +222,20 @@ class InboxConsumer(AsyncWebsocketConsumer):
             return
 
         message = await self.save_message(chat, text)
-        for user_id in (chat.user1_id, chat.user2_id):
-            await self.channel_layer.group_send(
-                group_for_user(user_id),
-                {'type': 'chat.message', 'message': serialize(message)},
-            )
+        event = {'type': 'chat.message', 'message': serialize(message)}
+        try:
+            for user_id in (chat.user1_id, chat.user2_id):
+                await self.channel_layer.group_send(group_for_user(user_id), event)
+        except Exception:
+            # It's saved, and the sender must know, or they'll send it again: answer this socket
+            # directly. Everyone else finds it through the gap fetch or the chat list (Codex audit M-04).
+            logger.exception('inbox: broadcast failed for message %s', message.pk)
+            await self.chat_message(event)
 
-    async def notify_read(self, chat, count):
+    async def notify_read(self, chat, up_to, count):
         for user_id in (chat.user1_id, chat.user2_id):
             await self.channel_layer.group_send(
-                group_for_user(user_id),
-                {'type': 'chat.read', 'chat_id': chat.pk,
-                 'by': self.user.pk, 'count': count},
-            )
+                group_for_user(user_id), read_event(chat, self.user.pk, up_to, count))
 
     # -- group event handlers -------------------------------------------------
 
@@ -211,7 +245,7 @@ class InboxConsumer(AsyncWebsocketConsumer):
     async def chat_read(self, event):
         await self.send(text_data=json.dumps({
             'type': 'read', 'chat_id': event['chat_id'],
-            'by': event['by'], 'count': event['count'],
+            'by': event['by'], 'up_to': event['up_to'], 'count': event['count'],
         }))
 
     # -- helpers --------------------------------------------------------------
@@ -241,15 +275,6 @@ class InboxConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def save_message(self, chat, text):
         return Message.objects.create(chat=chat, sender=self.user, text=text)
-
-    @database_sync_to_async
-    def mark_read(self, chat_id):
-        return (
-            Message.objects
-            .filter(chat_id=chat_id, is_read=False)
-            .exclude(sender=self.user)
-            .update(is_read=True, read_at=timezone.now())
-        )
 
     @database_sync_to_async
     def still_active(self):

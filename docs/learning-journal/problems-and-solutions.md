@@ -463,3 +463,18 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   send, open chat, rows and composer.
 - **Lesson:** anything async that can outlive a session has to know which session it belongs to.
 
+## P-30 · Read receipts covered messages nobody had seen
+
+- **Session:** [022](sessions/022-message-receipts.md)
+- **Observed:** Codex audit M-06, M-07, M-08, reproduced by tests: a read marked a message that arrived after the
+  screen was drawn (`2 != 1`); a read over REST reached no socket; one receipt ticked every outgoing message; and a
+  receipt missed while offline was never repaired.
+- **Root cause (Confirmed, by the tests):** "read" meant "everything in this chat, now", not "what I have on screen".
+  The socket and REST had two copies of the update, and only the socket told the sender. Nothing let a client ask
+  how far the other person had read.
+- **Fix:** a **read-up-to boundary**: the client sends the newest message id on screen; `chats.consumers.mark_read()`
+  (shared by both doors) marks only up to it, and `broadcast_read()` tells both sides. The chat list carries
+  `peer_read_up_to`, so the 45 s poll or a reconnect repairs missed ticks.
+  [Decision 008](decisions/008-read-up-to-boundary.md).
+- **Lesson:** "read" is a statement about the screen, so the screen must say how far it got.
+
