@@ -478,3 +478,20 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   [Decision 008](decisions/008-read-up-to-boundary.md).
 - **Lesson:** "read" is a statement about the screen, so the screen must say how far it got.
 
+## P-31 · Messages out of order, holes never filled, pages repeated or skipped
+
+- **Session:** [023](sessions/023-message-ordering.md)
+- **Observed:** Codex audit M-03, M-09, M-10, M-11, reproduced by tests: a live message that beat the history was drawn
+  above it; a message lost live before a later one was never fetched after a reconnect; one failed "Load older" skipped
+  a page (70 rows instead of 100); two clicks on "Show more chats" fetched page 2 twice; and after 50 new messages, the
+  second history page repeated the first.
+- **Root causes (Confirmed, by the tests):**
+  - rows were appended in arrival order, not sorted;
+  - catch-up started after the newest message *seen*, not after a point known to be complete;
+  - the page counter moved before the request succeeded, and nothing stopped two requests at once;
+  - history used offset pages over a list that grows at the top.
+- **Fix:** rows are inserted by id; `syncedUpTo` is a boundary only fetches move, with catch-up on every connect;
+  one request at a time, pointer moved on success; history pages by cursor
+  ([decision 009](decisions/009-cursor-pagination-for-history.md)).
+- **Lesson:** a list fed from several sources needs an order key and a completeness boundary, not trust in arrival order.
+

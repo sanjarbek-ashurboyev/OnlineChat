@@ -27,8 +27,10 @@ const state = {
   ws: null,
   pingTimer: null,
   retry: 0,
-  nextPage: 2,
-  hasOlder: false,
+  olderQuery: null,       // the cursor link's query for the next older page, or null
+  loadingOlder: false,
+  loadingMoreChats: false,
+  syncedUpTo: null,       // we hold every message of the open chat up to this id (Codex audit M-03)
   seenIds: new Set(),
   session: 0,             // bumped by logout; answers for an earlier session are dropped (Codex audit H-04)
   reconnectTimer: null,
@@ -199,12 +201,23 @@ async function loadChats() {
 }
 
 $('more-chats').addEventListener('click', async () => {
-  const data = await api(`/chats/?page=${state.chatPages + 1}`);
-  state.chatPages += 1;
-  const known = new Set(state.chats.map((c) => c.id));
-  state.chats.push(...data.results.filter((c) => !known.has(c.id)));
-  $('more-chats').hidden = !data.next;
-  renderChats();
+  // One request at a time: two clicks used to fetch the same page and skip the next (Codex audit M-10).
+  if (state.loadingMoreChats) return;
+  state.loadingMoreChats = true;
+  $('more-chats').disabled = true;
+  try {
+    const data = await api(`/chats/?page=${state.chatPages + 1}`);
+    state.chatPages += 1;              // only once the page has arrived
+    const known = new Set(state.chats.map((c) => c.id));
+    state.chats.push(...data.results.filter((c) => !known.has(c.id)));
+    $('more-chats').hidden = !data.next;
+    renderChats();
+  } catch {
+    // Nothing moved: the next click asks for the same page.
+  } finally {
+    state.loadingMoreChats = false;
+    $('more-chats').disabled = false;
+  }
 });
 
 function renderChats() {
@@ -306,13 +319,17 @@ function messageRow(msg) {
   return row;
 }
 
-function appendMessage(msg, { prepend = false } = {}) {
+function appendMessage(msg) {
   if (state.seenIds.has(msg.id)) return;
   state.seenIds.add(msg.id);
   const rows = $('message-rows');
   const row = messageRow(msg);
-  if (prepend) rows.prepend(row);
-  else rows.append(row);
+  // Rows stay in id order whatever order they arrive in: history, live, catch-up (Codex audit M-09).
+  // Search from the bottom, where new messages go.
+  let above = rows.lastElementChild;
+  while (above && Number(above.dataset.id) > msg.id) above = above.previousElementSibling;
+  if (above) above.after(row);
+  else rows.prepend(row);
 }
 
 function scrollToBottom() {
@@ -320,28 +337,35 @@ function scrollToBottom() {
   box.scrollTop = box.scrollHeight;
 }
 
-/** Returns null when the user opened another chat (or left) while this was loading. */
-async function loadHistory(chatId, page = 1) {
+/** `query` is '' for the newest page, or the cursor query for an older one.
+ *  Returns null when the user opened another chat (or left) while this was loading. */
+async function loadHistory(chatId, query = '') {
   const opened = state.opened;
-  const data = await api(`/chats/${chatId}/messages/?page=${page}`);
+  const data = await api(`/chats/${chatId}/messages/${query}`);
   if (opened !== state.opened) return null;
-  // The API returns newest first. Page 1 is appended, so reverse it: oldest at the top.
-  // Older pages are prepended one at a time, so keep newest first: each lands above the last.
-  const ordered = page > 1 ? data.results : [...data.results].reverse();
-  for (const msg of ordered) appendMessage(msg, { prepend: page > 1 });
-  state.hasOlder = Boolean(data.next);
-  $('load-older').hidden = !state.hasOlder;
+  // Newest first from the API; appendMessage puts each row in id order anyway.
+  for (const msg of data.results) appendMessage(msg);
+  // The newest page holds everything up to its newest message: the catch-up starts there.
+  if (!query) state.syncedUpTo = Math.max(0, ...data.results.map((m) => m.id));
+  // A cursor link points before the oldest message loaded, so new messages can't shift it (M-11).
+  state.olderQuery = data.next ? new URL(data.next).search : null;
+  $('load-older').hidden = !state.olderQuery;
   return data;
 }
 
-/** Append what arrived in the open chat while the socket was down. */
+/** Fetch what the open chat got while we weren't listening. It starts from syncedUpTo, which
+ *  live messages don't move, so one that never arrived live is fetched too (Codex audit M-03). */
 async function catchUp(chatId) {
-  const after = Math.max(0, ...state.seenIds);
-  const data = await api(`/chats/${chatId}/messages/?after=${after}`);
-  if (chatId !== state.activeId) return;           // the user switched chats meanwhile
+  if (state.syncedUpTo === null) return;           // the history isn't loaded yet; it will have these
+  const opened = state.opened;
+  const data = await api(`/chats/${chatId}/messages/?after=${state.syncedUpTo}`);
+  if (opened !== state.opened) return;             // the user switched chats meanwhile
   if (data.next) { openChat(chatId); return; }     // missed more than a page: reload
   for (const msg of data.results) appendMessage(msg);
-  if (data.results.length) scrollToBottom();
+  if (data.results.length) {
+    state.syncedUpTo = Math.max(state.syncedUpTo, ...data.results.map((m) => m.id));
+    scrollToBottom();
+  }
 }
 
 /** No echo in time (Codex audit H-06). The echo may be what got lost, so look in the history. */
@@ -363,10 +387,24 @@ async function reconcileSend(sent) {
 }
 
 $('load-older').addEventListener('click', async () => {
+  // One request at a time, and the cursor moves only when a page arrives (Codex audit M-10).
+  if (state.loadingOlder || !state.olderQuery) return;
+  const opened = state.opened;
   const box = $('messages');
   const before = box.scrollHeight;
-  if (!await loadHistory(state.activeId, state.nextPage++)) return;
-  box.scrollTop = box.scrollHeight - before;   // keep the reading position
+  state.loadingOlder = true;
+  $('load-older').disabled = true;
+  try {
+    if (!await loadHistory(state.activeId, state.olderQuery)) return;
+    box.scrollTop = box.scrollHeight - before;   // keep the reading position
+  } catch {
+    // The cursor didn't move: the next click asks for the same page.
+  } finally {
+    if (opened === state.opened) {
+      state.loadingOlder = false;
+      $('load-older').disabled = false;
+    }
+  }
 });
 
 /* ── open a chat ────────────────────────── */
@@ -378,7 +416,10 @@ async function openChat(chatId) {
   state.activeId = chatId;
   state.opened += 1;
   state.peer = chat.participant;
-  state.nextPage = 2;
+  state.olderQuery = null;
+  state.loadingOlder = false;
+  $('load-older').disabled = false;
+  state.syncedUpTo = null;
   state.seenIds.clear();
 
   $('app').dataset.view = 'chat';
@@ -392,7 +433,7 @@ async function openChat(chatId) {
   renderChats();
 
   // Stale: don't draw it, and don't mark a chat read that never reached the screen.
-  if (!await loadHistory(chatId, 1)) return;
+  if (!await loadHistory(chatId)) return;
   scrollToBottom();
 
   // The inbox socket is already open; just clear this chat's unread state.
@@ -484,14 +525,12 @@ function connectInbox() {
   let ready = false;
   const onReady = () => {
     ready = true;
-    const reconnected = state.retry > 0;
     state.retry = 0;
     setConn('is-open');
-    // The socket doesn't replay what it missed while down; Postgres has it (COR-1).
-    if (reconnected) {
-      if (state.activeId) catchUp(state.activeId);
-      loadChats();
-    }
+    // The socket doesn't replay what it missed while down, or before it first connected;
+    // Postgres has it (COR-1, Codex audit M-03). So on every connect, not just reconnects.
+    if (state.activeId) catchUp(state.activeId);
+    loadChats().catch(() => {});
     if (state.activeId) sendRead(state.activeId);
   };
 
@@ -675,6 +714,10 @@ function logout() {
   state.opened += 1;
   state.peer = null;
   state.retry = 0;
+  // An answer dropped by logout never reaches its `finally`: reset the in-flight flags here.
+  state.loadingOlder = state.loadingMoreChats = false;
+  $('load-older').disabled = $('more-chats').disabled = false;
+  state.syncedUpTo = state.olderQuery = null;
   state.seenIds.clear();
   $('chat-list').textContent = '';
   $('message-rows').textContent = '';
