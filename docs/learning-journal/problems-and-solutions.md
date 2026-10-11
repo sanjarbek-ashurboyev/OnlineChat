@@ -359,3 +359,24 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   With fork as the default, as in CI, the full suite passed locally: 89 OK.
 - **Lesson:** "passes on my machine" can depend on the OS's defaults. When CI and local disagree, list what differs
   (OS, Python version, settings) and test each difference on purpose.
+
+## P-23 · The load tester could pass a step with zero echoes
+
+- **Session:** [017](sessions/017-loadtest-verdict.md)
+- **Observed:** a Codex review said `loadtest/run.py` could overstate capacity. Reproduced with the old tester against
+  a local server where every pair was blocked (so the server rejects every message): **194 sent, 0 echoes, verdict OK**.
+  Killing the server during step 1 made the old tester report step 2 as "20/40 connected" (all were dead) and
+  "2/1 messages lost".
+- **Root causes (Confirmed, by those runs):**
+  - `(row['message_p95_ms'] or 0) > limit`: no samples became 0 ms, which always passes.
+  - A message counted as lost only once it was older than `--message-timeout` *at the moment of the summary*.
+    In a short step nothing was old enough, so nothing was lost.
+  - `connected = len(users) - drops`, but `drops` was reset with each step's new `Stats`. Earlier drops were forgotten.
+  - Messages sent during the ramp stayed pending after the counters were reset, so a step could lose more than it sent.
+  - Only the sender's echo was measured. Delivery to the recipient wasn't checked.
+  - The limits were looser than the plan: 500 ms and 1,000 ms p95, 1% errors (plan: 300 ms, 300 ms, 0.1%).
+- **Fix:** the pass/fail rules moved to `loadtest/verdict.py` (unit tested), with "no measurements" as a failure and
+  the plan's limits as defaults. Each step ends with a drain: sending pauses, the tester waits for in-flight messages,
+  and what's missing is lost. Online users are counted from each socket's own `closed` flag. Delivery to the
+  recipient is measured. Rerunning the same experiments: 205/205 no echo → FAIL; step 2 → 0/40 connected.
+- **Lesson:** a test that can't fail proves nothing. Feed it a broken system and check it says so.

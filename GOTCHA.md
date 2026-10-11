@@ -79,6 +79,11 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
   other too, with a test for each. → [P-20](docs/learning-journal/problems-and-solutions.md#p-20--two-doors-one-lock-auth-and-rate-limits-only-on-one-transport)
 - **`loadtest/tokens.json` holds live login tokens.** It's gitignored; keep it that way.
 
+## Load testing
+
+- **Before trusting a load test's "OK", make it fail on purpose** (e.g. block every pair so nothing is delivered).
+  Our tester once passed a step with zero echoes. → [P-23](docs/learning-journal/problems-and-solutions.md#p-23--the-load-tester-could-pass-a-step-with-zero-echoes)
+
 ## Runtime and infrastructure
 
 - **Cleanup code must not depend on every step succeeding.** A failing `group_discard` used to skip "mark

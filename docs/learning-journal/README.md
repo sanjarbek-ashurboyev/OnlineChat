@@ -34,6 +34,7 @@ It follows the real repository: file names, commands and results are the actual 
 14. [014 · Baseline load test: realistic profile, second machine, and what actually limited it](sessions/014-baseline-load-test.md)
 15. [015 · Codex review: disabled accounts on WebSockets, unlimited REST sends](sessions/015-codex-review-fixes-1-2.md)
 16. [016 · Codex review: four frontend bugs, and the first browser tests](sessions/016-codex-review-frontend-fixes.md)
+17. [017 · Codex review: a load tester that can say FAIL](sessions/017-loadtest-verdict.md)
 
 ## How to use it to learn
 

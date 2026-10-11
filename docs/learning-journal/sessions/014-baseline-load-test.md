@@ -5,6 +5,10 @@
 - **Code under test:** `main` at `ac84b47` (everything up to the presence-leak fix, PR #22)
 - **Objective:** know the app's real starting point with a realistic workload before changing anything for Stage 1.
 
+> **Update (session 017):** the tester used here had bugs ([P-23](../problems-and-solutions.md#p-23--the-load-tester-could-pass-a-step-with-zero-echoes))
+> and looser limits than the plan (500 ms and 1%, not 300 ms and 0.1%). The latencies below were really measured,
+> but the "healthy" verdicts need a rerun with the fixed tester.
+
 ## Setup
 | What | Value |
 |---|---|
