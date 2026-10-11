@@ -74,7 +74,7 @@ says which test proves the mitigation works.
 - **Acceptance:** the load test's end-of-run disconnects produce no presence leftovers.
 
 **T-03 · Throttles for auth, enumeration and chat creation** · C · 3–6 h · Next? yes
-- **Status (2026-10-10): step 1 done**, merged in PR #18 (session 009): the rates below, plus a per-phone login throttle in `accounts/throttles.py`, 8 new tests. Step 2 (`NUM_PROXIES`) waits for a proxy; the load-test acceptance is not run yet.
+- **Status (2026-10-10): step 1 done**, merged in PR #18 (session 009): the rates below, plus a per-phone login throttle in `accounts/throttles.py`, 8 new tests. Step 2: `NUM_PROXIES` is set from `DJANGO_NUM_PROXIES` (default 0) since session 019, because unset trusted a forged header; set it to the proxy count when one is added. The load-test acceptance is not run yet.
 - **Problem:** SEC-3, SEC-4.
 - **Files:** `accounts/views.py`, `chats/views.py`, `root/settings.py`, new `accounts/throttles.py` (phone-keyed login throttle).
 - **Steps:**
@@ -181,7 +181,7 @@ says which test proves the mitigation works.
 | T-18 | Cursor pagination for history (expand/contract) | M | 4–6 h | T-09 | `chats/views.py`, `assets/app.js` | Deep page latency flat; no duplicates/gaps in test |
 | T-19 | Drop redundant indexes | L | 1 h | T-12 (measure) | migration (`RemoveIndexConcurrently`) | Insert cost measured before/after |
 | T-20 | WS token never logged (proxy log format, later socket ticket) | M | 1–4 h | T-10 | proxy config / `chats/middleware.py` | `grep token=` on logs empty |
-| T-21 | Redis failure behaviour: throttles fail open, `/readyz` reports it | M | 2–4 h | T-03 | `root/settings.py`, custom throttle cache handling | Stop Redis: REST still answers, 5xx rate < 1% |
+| T-21 | Redis failure behaviour: throttles fail open, `/readyz` reports it. **Partial:** REST throttles fail open since session 019; `/readyz` not done | M | 2–4 h | T-03 | `root/settings.py`, custom throttle cache handling | Stop Redis: REST still answers, 5xx rate < 1% |
 | T-22 | Second app process + cross-process test | M | 2–4 h | T-13 | proxy config | A on process 1, B on process 2 exchange messages |
 | T-29 | Cache chat membership on the socket (optional) | L | 2 h | T-13 + profile showing `get_chat` matters | `chats/consumers.py` | Only if profiling justifies it |
 

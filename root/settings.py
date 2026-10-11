@@ -188,6 +188,9 @@ REST_FRAMEWORK = {
         # REST sends; the socket allows the same sustained 1/s (chats/consumers.py).
         'message_send': '60/min',
     },
+    # Proxies in front of Django that append to X-Forwarded-For. 0 = clients connect directly, so the header
+    # is the client's own and ignored. Unset, DRF would trust it and anyone could pick their "IP".
+    'NUM_PROXIES': int(os.environ.get('DJANGO_NUM_PROXIES', '0')),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 50,
 

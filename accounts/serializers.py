@@ -1,4 +1,6 @@
 from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import IntegrityError, transaction
 from rest_framework.exceptions import ValidationError
 from rest_framework.fields import CharField, SerializerMethodField
 from rest_framework.serializers import ModelSerializer
@@ -20,15 +22,25 @@ class RegisterSerializer(ModelSerializer):
     def validate(self, attrs):
         if attrs['password'] != attrs['confirm_password']:
             raise ValidationError({'confirm_password': "Passwords don't match"})
+        # Pass the would-be user, so the similarity check can compare the password with the name.
+        candidate = User(phone_number=attrs['phone_number'], first_name=attrs.get('first_name', ''))
+        try:
+            validate_password(attrs['password'], user=candidate)
+        except DjangoValidationError as exc:
+            raise ValidationError({'password': exc.messages}) from exc
         return attrs
-
-    def validate_password(self, value):
-        validate_password(value)
-        return value
 
     def create(self, validated_data):
         validated_data.pop('confirm_password')
-        return User.objects.create_user(**validated_data)
+        try:
+            # A savepoint, so a failed insert doesn't break the surrounding transaction.
+            with transaction.atomic():
+                return User.objects.create_user(**validated_data)
+        except IntegrityError:
+            # Two requests for one number can both pass the uniqueness check; the database stops the second.
+            if User.objects.filter(phone_number=validated_data['phone_number']).exists():
+                raise ValidationError({'phone_number': ['user with this phone number already exists.']}) from None
+            raise
 
 
 class ProfileSerializer(ModelSerializer):

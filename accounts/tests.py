@@ -1,15 +1,20 @@
 from datetime import timedelta
+from unittest import mock
 
 import jwt
 from django.conf import settings
 from django.core.cache import cache
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
+from redis.exceptions import ConnectionError as RedisConnectionError
+from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIClient
+from rest_framework.throttling import SimpleRateThrottle
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import AccessToken
 
 from accounts.models import User
+from accounts.serializers import RegisterSerializer
 from chats import presence
 from chats.models import Block
 from test_helpers import (
@@ -54,6 +59,27 @@ class RegisterTests(TestCase):
 
     def test_password_is_never_returned(self):
         self.assertNotIn('password', self.register().data)
+
+    def test_a_password_like_the_first_name_is_rejected(self):
+        # Codex audit M-17: the similarity validator needs the would-be user to compare against.
+        response = self.register(first_name='Bahodirjon', password='Bahodirjon',
+                                 confirm_password='Bahodirjon')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('password', response.data)
+
+    def test_two_registrations_racing_for_one_number_give_a_400_not_a_500(self):
+        # Codex audit M-18: both pass the uniqueness check before either saves.
+        data = {'phone_number': phone(1), 'password': PASSWORD, 'confirm_password': PASSWORD,
+                'first_name': 'Ali'}
+        first, second = RegisterSerializer(data=data), RegisterSerializer(data=data)
+        self.assertTrue(first.is_valid())
+        self.assertTrue(second.is_valid())
+        first.save()
+
+        with self.assertRaises(ValidationError) as caught:
+            second.save()
+        self.assertIn('phone_number', caught.exception.detail)
+        self.assertEqual(User.objects.count(), 1)
 
 
 class LoginTests(TestCase):
@@ -143,6 +169,52 @@ class AuthThrottleTests(TestCase):
             self.assertEqual(register(n).status_code, 201)
         self.assertEqual(register(5).status_code, 429)
         self.assertEqual(register(5, ip='10.0.0.2').status_code, 201)
+
+    def test_a_forged_forwarded_for_header_does_not_reset_the_ip_limit(self):
+        # Codex audit H-02: with NUM_PROXIES unset, DRF used the client's own X-Forwarded-For as its IP.
+        def login(n):
+            return APIClient().post(self.LOGIN, {'phone_number': phone(n), 'password': 'wrong'},
+                                    REMOTE_ADDR='10.0.0.1', HTTP_X_FORWARDED_FOR=f'203.0.113.{n}')
+
+        for n in range(20):
+            self.assertEqual(login(n).status_code, 401)
+        self.assertEqual(login(20).status_code, 429)
+
+    @override_settings(REST_FRAMEWORK={**settings.REST_FRAMEWORK, 'NUM_PROXIES': 1})
+    def test_behind_one_proxy_the_client_ip_is_the_one_the_proxy_added(self):
+        def login(n, forwarded):
+            # Every request reaches Django from the proxy; it appends the real client IP to the header.
+            return APIClient().post(self.LOGIN, {'phone_number': phone(n), 'password': 'wrong'},
+                                    REMOTE_ADDR='10.0.0.9', HTTP_X_FORWARDED_FOR=forwarded)
+
+        for n in range(20):
+            # The client's own forged entry comes first and is ignored.
+            self.assertEqual(login(n, f'198.51.100.{n}, 203.0.113.1').status_code, 401)
+        self.assertEqual(login(20, '203.0.113.1').status_code, 429)
+        self.assertEqual(login(20, '203.0.113.2').status_code, 401, 'other clients are unaffected')
+
+    def test_a_signed_in_client_still_counts_against_the_registration_ip_limit(self):
+        # Codex audit H-03: a token used to switch the counter from the IP to the user.
+        def register(n, **headers):
+            return APIClient().post('/api/v1/auth/register/', {
+                'phone_number': phone(n), 'password': PASSWORD, 'confirm_password': PASSWORD,
+                'first_name': 'Ali'}, REMOTE_ADDR='10.0.0.1', **headers)
+
+        for n in range(5):
+            self.assertEqual(register(n).status_code, 201)
+        token = token_for(User.objects.first())
+        self.assertEqual(register(5, HTTP_AUTHORIZATION=f'Bearer {token}').status_code, 429)
+
+    def test_login_and_refresh_still_answer_when_the_throttle_cache_is_down(self):
+        # Codex audit M-19; the plan says throttles fail open (docs/scaling/02-plan.md, T-21).
+        down = mock.Mock(**{'get.side_effect': RedisConnectionError, 'set.side_effect': RedisConnectionError})
+        with mock.patch.object(SimpleRateThrottle, 'cache', down), \
+                self.assertLogs('accounts.throttles', 'WARNING') as logs:
+            self.assertEqual(self.login(1).status_code, 401)
+            response = APIClient().post('/api/v1/auth/token/refresh/', {'refresh': 'garbage'})
+            self.assertEqual(response.status_code, 401)
+        down.get.assert_called()
+        self.assertEqual(len(logs.records), 3)  # login IP, login phone, refresh: each outage is visible
 
     def test_one_ip_can_refresh_30_times_a_minute(self):
         def refresh():

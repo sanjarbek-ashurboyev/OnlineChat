@@ -8,7 +8,6 @@ from rest_framework.generics import (
     RetrieveUpdateAPIView,
 )
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from accounts.models import User
@@ -18,7 +17,12 @@ from accounts.serializers import (
     RegisterSerializer,
     UserLookupSerializer,
 )
-from accounts.throttles import LoginIPThrottle, LoginPhoneThrottle
+from accounts.throttles import (
+    LoginIPThrottle,
+    LoginPhoneThrottle,
+    RegisterIPThrottle,
+    ScopedRateThrottle,
+)
 
 
 # Create your views here.
@@ -26,8 +30,7 @@ from accounts.throttles import LoginIPThrottle, LoginPhoneThrottle
 class RegisterCreateAPIView(CreateAPIView):
     permission_classes = [AllowAny]
     serializer_class = RegisterSerializer
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = 'register_ip'
+    throttle_classes = [RegisterIPThrottle]
 
 @extend_schema(tags=['auth'])
 class CustomTokenObtainPairView(TokenObtainPairView):
