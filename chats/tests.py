@@ -6,6 +6,7 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from accounts.models import User
 from chats import presence
 from chats.models import MAX_MESSAGE_LENGTH, Block, Chat, Message
 from test_helpers import FakePresenceMixin, client_for, make_user, token_for
@@ -113,6 +114,33 @@ class ChatListTests(FakePresenceMixin, TestCase):
         presence.mark_online(self.friend.id, 'some-channel')
         online = {c['participant']['id']: c['participant']['is_online'] for c in self.chats()}
         self.assertEqual(online, {self.friend.id: True, self.colleague.id: False})
+
+    def show_everything(self, user):
+        User.objects.filter(pk=user.pk).update(avatar='avatars/face.png', last_seen=timezone.now())
+        presence.mark_online(user.id, 'some-channel')
+
+    def participant(self, chat):
+        return next(c for c in self.chats() if c['id'] == chat.id)['participant']
+
+    def test_someone_who_blocked_you_shows_no_photo_or_status(self):
+        # Codex audit M-14: GET /users/<id>/ hides them; the chat list used to show it all anyway.
+        self.show_everything(self.friend)
+        Block.objects.create(blocker=self.friend, blocked=self.me)
+
+        self.assertEqual(self.participant(self.with_friend), {
+            'id': self.friend.id, 'display_name': 'User 2',
+            'avatar': None, 'is_online': False, 'last_seen': None,
+        })
+
+    def test_someone_you_blocked_still_shows_their_photo_and_status(self):
+        # Only their block hides them from you, as on the profile endpoint.
+        self.show_everything(self.friend)
+        Block.objects.create(blocker=self.me, blocked=self.friend)
+
+        participant = self.participant(self.with_friend)
+        self.assertTrue(participant['is_online'])
+        self.assertIsNotNone(participant['avatar'])
+        self.assertIsNotNone(participant['last_seen'])
 
 
 @mock.patch('chats.views.broadcast_message')

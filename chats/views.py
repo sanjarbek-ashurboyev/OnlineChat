@@ -69,9 +69,12 @@ class ChatListCreateAPIView(ListCreateAPIView):
     def list(self, request, *args, **kwargs):
         # One Redis round trip for the whole page, rather than one per chat.
         page = self.paginate_queryset(self.filter_queryset(self.get_queryset()))
+        others = self.other_party_ids(page)
+        blocked_by = Block.objects.filter(blocker_id__in=others, blocked=request.user)
         context = {
             **self.get_serializer_context(),
-            'presence': presence.online_map(self.other_party_ids(page)),
+            'presence': presence.online_map(others),
+            'blocked_by': set(blocked_by.values_list('blocker_id', flat=True)),
         }
         serializer = ChatSerializer(page, many=True, context=context)
         return self.get_paginated_response(serializer.data)

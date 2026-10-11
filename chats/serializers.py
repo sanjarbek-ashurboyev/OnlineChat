@@ -32,7 +32,17 @@ class ChatSerializer(ModelSerializer):
     def get_participant(self, obj):
         me = self.context['request'].user
         other = obj.user2 if obj.user1_id == me.pk else obj.user1
-        return PublicUserSerializer(other, context=self.context).data
+        data = PublicUserSerializer(other, context=self.context).data
+        # Like `presence`, a list view pre-builds `blocked_by`: who among the page blocked me.
+        blocked_by = self.context.get('blocked_by')
+        if blocked_by is None:
+            hidden = Block.objects.filter(blocker=other, blocked=me).exists()
+        else:
+            hidden = other.pk in blocked_by
+        if hidden:
+            # The profile endpoint hides them from me; the chat keeps only what I already know (M-14).
+            data.update(avatar=None, is_online=False, last_seen=None)
+        return data
 
     def get_last_message(self, obj):
         # Populated by Subquery in the view's queryset; None on an empty chat.

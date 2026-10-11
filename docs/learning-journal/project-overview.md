@@ -86,6 +86,8 @@ Versions come from `requirements.txt`, compiled from `requirements.in` for Pytho
   adds `last_seen` and `avatar`.
 - `authentication.py`: `LastSeenJWTAuthentication` is SimpleJWT's authenticator plus a
   `last_seen` update, written at most once a minute (`TOUCH_INTERVAL`).
+- `signals.py`: deletes an avatar file once no account points to it (replaced, removed, or the
+  account deleted), after the transaction commits.
 - `views.py` / `urls.py`: the endpoints below. `UserLookupAPIView` is the only throttled one
   (`user_lookup: 20/hour`).
 

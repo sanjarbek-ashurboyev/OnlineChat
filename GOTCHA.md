@@ -71,6 +71,8 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
   broadcasts). Playwright's loop runs there, so it raises; our view's `except` hid it. Change the database directly.
 - **Writing Python code from a Python script doubles the escaping.** A test regex became `\\?` and never matched.
   `grep` the written file for the pattern before trusting it (session 023).
+- **Playwright's `has_text='User 2'` is a substring match:** it also finds "User 20". Use `re.compile('^User 2$')`
+  when names share a prefix; a "strict mode violation" is the sign (session 024).
 - **A Playwright route handler must be a Python function**, not a built-in like `held.append`: wrap it in a lambda.
 - **Write the failing test first, and watch it fail.** When mocking, also assert the mock was called
   (`assert_awaited_once()`); otherwise the test can pass without testing anything.

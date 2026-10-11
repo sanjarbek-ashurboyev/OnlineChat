@@ -1,11 +1,17 @@
+import shutil
+import tempfile
 from datetime import timedelta
+from io import BytesIO
 from unittest import mock
 
 import jwt
 from django.conf import settings
 from django.core.cache import cache
+from django.core.files.storage import default_storage
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
+from PIL import Image
 from redis.exceptions import ConnectionError as RedisConnectionError
 from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIClient
@@ -239,6 +245,87 @@ class ProfileTests(TestCase):
         self.assertEqual(response.status_code, 200)
         user.refresh_from_db()
         self.assertEqual((user.first_name, str(user.phone_number)), ('Vali', phone(1)))
+
+
+def png(width=1, height=1, extra_bytes=0):
+    """A valid PNG; extra_bytes of junk after it still pass Pillow's check."""
+    buffer = BytesIO()
+    Image.new('RGB', (width, height)).save(buffer, 'PNG')
+    return SimpleUploadedFile('face.png', buffer.getvalue() + b'\0' * extra_bytes, content_type='image/png')
+
+
+class AvatarTests(TestCase):
+    """Codex audit M-15 (size limits) and M-16 (old files left behind)."""
+    URL = '/api/v1/auth/profile/'
+
+    def setUp(self):
+        media = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, media)
+        override = override_settings(MEDIA_ROOT=media)
+        override.enable()
+        self.addCleanup(override.disable)
+        self.user = make_user()
+        self.client = client_for(self.user)
+
+    def upload(self, file):
+        with self.captureOnCommitCallbacks(execute=True):
+            return self.client.patch(self.URL, {'avatar': file}, format='multipart')
+
+    def stored(self):
+        return default_storage.listdir('avatars')[1] if default_storage.exists('avatars') else []
+
+    def test_a_small_photo_is_saved(self):
+        self.assertEqual(self.upload(png(64, 64)).status_code, 200)
+        self.assertEqual(len(self.stored()), 1)
+
+    def test_a_file_over_2_mib_is_rejected(self):
+        # The audit's case: a 1-pixel PNG with megabytes of junk after it passed.
+        response = self.upload(png(extra_bytes=2 * 1024 * 1024))
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('2 MiB', str(response.data['avatar']))
+        self.assertEqual(self.stored(), [])
+
+    def test_more_than_4096_pixels_on_a_side_is_rejected(self):
+        for width, height in ((4097, 1), (1, 4097)):
+            with self.subTest(f'{width}x{height}'):
+                response = self.upload(png(width, height))
+                self.assertEqual(response.status_code, 400)
+                self.assertIn('4096', str(response.data['avatar']))
+
+    def test_replacing_the_photo_deletes_the_old_file(self):
+        self.upload(png())
+        self.upload(png(2, 2))
+        self.user.refresh_from_db()
+        self.assertEqual(self.stored(), [self.user.avatar.name.split('/')[-1]])
+
+    def test_removing_the_photo_deletes_the_file(self):
+        self.upload(png())
+        self.assertEqual(self.upload('').status_code, 200)
+        self.assertEqual(self.stored(), [])
+
+    def test_deleting_the_account_deletes_the_file(self):
+        self.upload(png())
+        with self.captureOnCommitCallbacks(execute=True):
+            User.objects.filter(pk=self.user.pk).delete()
+        self.assertEqual(self.stored(), [])
+
+    def test_a_file_still_used_by_another_account_is_kept(self):
+        self.upload(png())
+        self.user.refresh_from_db()
+        make_user(2, avatar=self.user.avatar.name)
+        self.upload(png(2, 2))
+        self.assertEqual(len(self.stored()), 2)
+
+    def test_the_old_file_is_deleted_only_once_the_change_commits(self):
+        self.upload(png())
+        self.user.refresh_from_db()
+        old = self.user.avatar.name
+        with self.captureOnCommitCallbacks(execute=False) as callbacks:
+            self.user.avatar = 'avatars/other.png'
+            self.user.save()
+        # Until the commit it may still be rolled back, so the deletion waits in the queue.
+        self.assertEqual(len(callbacks), 1)
+        self.assertTrue(default_storage.exists(old))
 
 
 class UserLookupTests(FakePresenceMixin, TestCase):

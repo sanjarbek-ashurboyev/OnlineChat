@@ -189,15 +189,21 @@ $('auth-form').addEventListener('submit', async (e) => {
 /* ── chat list ──────────────────────────── */
 
 async function loadChats() {
-  // Page 1 holds the newest conversations. Keep the older pages already shown below it.
-  const data = await api('/chats/');
-  const fresh = new Set(data.results.map((c) => c.id));
-  state.chats = [...data.results, ...state.chats.filter((c) => !fresh.has(c.id))];
-  if (state.chatPages === 1) $('more-chats').hidden = !data.next;
+  // Every page on screen, not just the first: online dots and unread counts change on all of them
+  // (Codex audit M-13). Keep chats no page returned, e.g. one a lookup opened.
+  const urls = Array.from({ length: state.chatPages }, (_, i) => (i ? `/chats/?page=${i + 1}` : '/chats/'));
+  const pages = await Promise.all(urls.map((url) => api(url)));
+  const results = pages.flatMap((page) => page.results);
+  const fresh = new Set(results.map((c) => c.id));
+  state.chats = [...results, ...state.chats.filter((c) => !fresh.has(c.id))];
+  // A "Show more" that landed meanwhile already set the button from a later page.
+  if (urls.length === state.chatPages) $('more-chats').hidden = !pages[pages.length - 1].next;
   renderChats();
+  const active = results.find((c) => c.id === state.activeId);
+  if (!active) return;
+  showPeer(active.participant);
   // Receipts sent while our socket was down never arrive; the list says how far they got (M-08).
-  const active = data.results.find((c) => c.id === state.activeId);
-  if (active && active.peer_read_up_to) showReadUpTo(active.peer_read_up_to);
+  if (active.peer_read_up_to) showReadUpTo(active.peer_read_up_to);
 }
 
 $('more-chats').addEventListener('click', async () => {
@@ -415,7 +421,6 @@ async function openChat(chatId) {
 
   state.activeId = chatId;
   state.opened += 1;
-  state.peer = chat.participant;
   state.olderQuery = null;
   state.loadingOlder = false;
   $('load-older').disabled = false;
@@ -427,9 +432,7 @@ async function openChat(chatId) {
   $('pane-chat').hidden = false;
   $('message-rows').textContent = '';
   $('send-error').hidden = true;
-  $('peer-avatar').src = chat.participant.avatar || AVATAR_FALLBACK;
-  $('peer-name').textContent = chat.participant.display_name || 'Unnamed';
-  $('peer-status').textContent = lastSeenText(chat.participant);
+  showPeer(chat.participant);
   renderChats();
 
   // Stale: don't draw it, and don't mark a chat read that never reached the screen.
@@ -439,6 +442,14 @@ async function openChat(chatId) {
   // The inbox socket is already open; just clear this chat's unread state.
   sendRead(chatId);
   if (chat.unread_count) { chat.unread_count = 0; renderChats(); }
+}
+
+/** The open chat's header. Drawn on opening, and again by every chat list poll (M-13). */
+function showPeer(peer) {
+  state.peer = peer;
+  $('peer-avatar').src = peer.avatar || AVATAR_FALLBACK;
+  $('peer-name').textContent = peer.display_name || 'Unnamed';
+  $('peer-status').textContent = lastSeenText(peer);
 }
 
 $('back').addEventListener('click', () => {
