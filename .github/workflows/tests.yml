@@ -81,6 +81,8 @@ jobs:
           python-version: "3.13"
           cache: pip
       - run: pip install -r requirements.txt
+      # For chats/test_browser.py; the job without Postgres and Redis skips those tests.
+      - run: playwright install --with-deps chromium
       - run: python manage.py test --verbosity 2
 
   secrets:

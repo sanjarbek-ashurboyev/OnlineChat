@@ -16,7 +16,10 @@ const state = {
   refresh: localStorage.getItem('refresh'),
   me: null,
   chats: [],
+  chatPages: 1,
   activeId: null,
+  opened: 0,              // bumped by every openChat; an answer for an earlier one is dropped
+  sending: null,          // { chatId, text } of the message waiting for the server's answer
   peer: null,
   ws: null,
   pingTimer: null,
@@ -164,10 +167,22 @@ $('auth-form').addEventListener('submit', async (e) => {
 /* ── chat list ──────────────────────────── */
 
 async function loadChats() {
+  // Page 1 holds the newest conversations. Keep the older pages already shown below it.
   const data = await api('/chats/');
-  state.chats = data.results;
+  const fresh = new Set(data.results.map((c) => c.id));
+  state.chats = [...data.results, ...state.chats.filter((c) => !fresh.has(c.id))];
+  if (state.chatPages === 1) $('more-chats').hidden = !data.next;
   renderChats();
 }
+
+$('more-chats').addEventListener('click', async () => {
+  const data = await api(`/chats/?page=${state.chatPages + 1}`);
+  state.chatPages += 1;
+  const known = new Set(state.chats.map((c) => c.id));
+  state.chats.push(...data.results.filter((c) => !known.has(c.id)));
+  $('more-chats').hidden = !data.next;
+  renderChats();
+});
 
 function renderChats() {
   const list = $('chat-list');
@@ -237,6 +252,8 @@ $('lookup-form').addEventListener('submit', async (e) => {
     field.value = '';
     msg.hidden = true;
     await loadChats();
+    // An old conversation may be on a page that isn't loaded yet.
+    if (!state.chats.some((c) => c.id === chat.id)) state.chats.push(chat);
     openChat(chat.id);
   } catch (err) {
     msg.textContent = err.status === 404
@@ -280,10 +297,14 @@ function scrollToBottom() {
   box.scrollTop = box.scrollHeight;
 }
 
+/** Returns null when the user opened another chat (or left) while this was loading. */
 async function loadHistory(chatId, page = 1) {
-  // The API returns newest-first; reverse so the oldest renders at the top.
+  const opened = state.opened;
   const data = await api(`/chats/${chatId}/messages/?page=${page}`);
-  const ordered = [...data.results].reverse();
+  if (opened !== state.opened) return null;
+  // The API returns newest first. Page 1 is appended, so reverse it: oldest at the top.
+  // Older pages are prepended one at a time, so keep newest first: each lands above the last.
+  const ordered = page > 1 ? data.results : [...data.results].reverse();
   for (const msg of ordered) appendMessage(msg, { prepend: page > 1 });
   state.hasOlder = Boolean(data.next);
   $('load-older').hidden = !state.hasOlder;
@@ -303,7 +324,7 @@ async function catchUp(chatId) {
 $('load-older').addEventListener('click', async () => {
   const box = $('messages');
   const before = box.scrollHeight;
-  await loadHistory(state.activeId, state.nextPage++);
+  if (!await loadHistory(state.activeId, state.nextPage++)) return;
   box.scrollTop = box.scrollHeight - before;   // keep the reading position
 });
 
@@ -314,6 +335,7 @@ async function openChat(chatId) {
   if (!chat) return;
 
   state.activeId = chatId;
+  state.opened += 1;
   state.peer = chat.participant;
   state.nextPage = 2;
   state.seenIds.clear();
@@ -328,7 +350,8 @@ async function openChat(chatId) {
   $('peer-status').textContent = lastSeenText(chat.participant);
   renderChats();
 
-  await loadHistory(chatId, 1);
+  // Stale: don't draw it, and don't mark a chat read that never reached the screen.
+  if (!await loadHistory(chatId, 1)) return;
   scrollToBottom();
 
   // The inbox socket is already open; just clear this chat's unread state.
@@ -339,6 +362,7 @@ async function openChat(chatId) {
 $('back').addEventListener('click', () => {
   $('app').dataset.view = 'list';
   state.activeId = null;      // socket stays open — other chats keep updating
+  state.opened += 1;
   renderChats();
 });
 
@@ -430,6 +454,10 @@ function connectInbox() {
         if (atBottom) scrollToBottom();
         if (data.sender_id !== state.me.id) sendRead(data.chat_id);
       }
+      if (isOurSend(data)) {
+        if (composer.value.trim() === data.text) { composer.value = ''; composer.style.height = 'auto'; }
+        state.sending = null;
+      }
       applyToSidebar(data);
       return;
     }
@@ -450,6 +478,9 @@ function connectInbox() {
     }
 
     if (data.type === 'error') {
+      // Errors don't say which frame they answer, so any error fails a waiting send.
+      // Its text stays in the composer for a retry.
+      state.sending = null;
       $('send-error').textContent = data.detail;
       $('send-error').hidden = false;
     }
@@ -457,6 +488,7 @@ function connectInbox() {
 
   ws.onclose = (event) => {
     clearInterval(state.pingTimer);
+    state.sending = null;                    // no answer coming; the text stays in the composer
     setConn('is-down');
     if (!state.me) return;                   // logged out on purpose
 
@@ -493,10 +525,16 @@ composer.addEventListener('keydown', (e) => {
   }
 });
 
+/** Our own message coming back from the server: the send we're waiting for succeeded. */
+function isOurSend(msg) {
+  const s = state.sending;
+  return Boolean(s) && msg.sender_id === state.me.id && msg.chat_id === s.chatId && msg.text === s.text;
+}
+
 $('send-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const text = composer.value.trim();
-  if (!text) return;
+  if (!text || state.sending) return;     // one message in flight at a time
 
   if (!socketSend({ action: 'message', chat_id: state.activeId, text })) {
     $('send-error').textContent = 'Not connected. Reconnecting…';
@@ -504,8 +542,8 @@ $('send-form').addEventListener('submit', (e) => {
     return;
   }
 
-  composer.value = '';
-  composer.style.height = 'auto';
+  // Keep the text until the server answers: the echo clears it, an error leaves it.
+  state.sending = { chatId: state.activeId, text };
   $('send-error').hidden = true;
 });
 
@@ -549,6 +587,7 @@ function logout() {
   clearTokens();
   state.me = null;
   state.chats = [];
+  state.chatPages = 1;
   state.activeId = null;
   $('app').hidden = true;
   $('auth').hidden = false;

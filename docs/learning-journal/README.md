@@ -33,6 +33,7 @@ It follows the real repository: file names, commands and results are the actual 
 13. [013 · Fix: leftover presence entries no longer lock users out](sessions/013-presence-leak.md)
 14. [014 · Baseline load test: realistic profile, second machine, and what actually limited it](sessions/014-baseline-load-test.md)
 15. [015 · Codex review: disabled accounts on WebSockets, unlimited REST sends](sessions/015-codex-review-fixes-1-2.md)
+16. [016 · Codex review: four frontend bugs, and the first browser tests](sessions/016-codex-review-frontend-fixes.md)
 
 ## How to use it to learn
 

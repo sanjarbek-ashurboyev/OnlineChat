@@ -53,6 +53,10 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
 - **macOS has no `timeout` command.** `timeout 40 cmd` fails with "command not found", so the command never runs.
   Use Python's `subprocess.run(..., timeout=40)` instead.
 - **"0 tests ran" is not "tests pass".**
+- **Browser tests (`chats/test_browser.py`) skip on `make test`.** Run them with Docker up:
+  `python manage.py test chats.test_browser`. A skip is not a pass.
+- **After an `await` in `app.js`, the user may have moved on.** Check the answer still belongs to what's on screen
+  before drawing it. → [P-21](docs/learning-journal/problems-and-solutions.md#p-21--four-frontend-bugs-with-no-tests-to-catch-them)
 - **Write the failing test first, and watch it fail.** When mocking, also assert the mock was called
   (`assert_awaited_once()`); otherwise the test can pass without testing anything.
 
