@@ -326,3 +326,36 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
 - **Fix:** the middleware looks the user up with `is_active=True`. Message sends over REST have a `message_send`
   throttle of 60/min per user, the same sustained rate as the socket.
 - **Lesson:** list every path to an action before calling it protected, and write one test per path.
+
+## P-21 · Four frontend bugs, with no tests to catch them
+
+- **Session:** [016](sessions/016-codex-review-frontend-fixes.md)
+- **Observed:** a Codex review reported four bugs in `assets/app.js`. Each was reproduced by a Playwright test
+  before the fix: chat A's message showed up in chat B (`['from B', 'from A']`); "load older" showed `m03, m02, m01`;
+  chats after the first 50 couldn't be reached (no button, and looking one up did nothing); a blocked send
+  emptied the composer.
+- **Root causes (Confirmed, by tests):**
+  - `loadHistory` drew its answer after `await` without checking that the chat was still open. `openChat` then
+    also sent a read receipt for that chat, marking messages read that never reached the screen.
+  - Older pages were reversed to oldest-first and then prepended one by one, which reversed them again.
+  - `loadChats` read `data.results` and ignored `data.next`, and the lookup opened a chat only if it was in that list.
+  - The composer was cleared as soon as the frame was sent, before the server accepted it.
+- **Fix:** an `opened` counter (stale answers are dropped); prepend older pages newest-first; a "Show more chats"
+  button, polls that keep extra pages, and the lookup adds the chat it gets back; the text stays until the server's
+  echo arrives, and an error leaves it in place.
+- **Lesson:** code with no tests collects bugs unnoticed. Code that `await`s must re-check the world afterwards.
+
+## P-22 · Browser tests passed on the Mac but never connected in CI
+
+- **Session:** [016](sessions/016-codex-review-frontend-fixes.md)
+- **Observed:** all 6 browser tests passed locally, then failed in CI's `test-postgres-redis`, each waiting for
+  `#conn-state.is-open` ("element(s) not found"): the page's WebSocket never connected.
+- **Root cause (Confirmed, by experiment; the exact mechanism is a Hypothesis):** `ChannelsLiveServerTestCase` starts
+  Daphne with `multiprocessing`. macOS starts a new process with **spawn** (a fresh Python). Linux uses **fork** (a copy
+  of the test process, with its open connections and state). Forcing fork locally reproduced the CI failure exactly;
+  forcing spawn fixed it. Which inherited thing breaks the server (a Postgres or Redis connection, or the event loop)
+  was not traced.
+- **Fix:** the browser test class sets the start method to `spawn` for its own run and restores it afterwards.
+  With fork as the default, as in CI, the full suite passed locally: 89 OK.
+- **Lesson:** "passes on my machine" can depend on the OS's defaults. When CI and local disagree, list what differs
+  (OS, Python version, settings) and test each difference on purpose.

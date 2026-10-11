@@ -67,6 +67,20 @@ the behaviour it protects, so a failure reads like a sentence.
 `test_helpers.FakePresenceMixin` replaces the Redis presence client with a dictionary for each test. Fakes
 make tests fast and independent, but they can drift from the real thing. The real-services job is the safety net.
 
+### Browser tests (Playwright), session 016
+- **What:** a test opens a real Chromium, loads the real page from a live server, clicks and types like a person,
+  and checks what's on screen. This is called an **end-to-end (e2e)** test: it goes through every layer.
+- **Why:** `app.js` had no tests at all. Its bugs (wrong order, a slow answer landing in the wrong chat) only show
+  up when the real JavaScript runs against a real server.
+- **How:** `chats/test_browser.py`. `ChannelsLiveServerTestCase` starts Daphne in a **separate process**, so the
+  server and the test must share Postgres and Redis. On the SQLite settings the tests skip; they run in
+  `test-postgres-redis`.
+- **Controlling timing:** `page.route(url, handler)` intercepts a request. Holding it in a list and calling
+  `route.continue_()` later makes "this answer is slow" happen on purpose, every time.
+- **Waiting:** `expect(locator).to_have_count(50)` retries until it's true (5 s at most). Don't sleep and hope.
+- **Run locally:** `docker compose up -d`, `playwright install chromium`, then `python manage.py test chats.test_browser`.
+- Why Playwright: [decision 004](../decisions/004-browser-tests-with-playwright.md).
+
 ## 6. Alternatives
 - **pytest + pytest-django** instead of Django's runner: shorter tests and fixtures, very popular. Django's
   runner is fine here, and switching would be a big diff for little gain.
