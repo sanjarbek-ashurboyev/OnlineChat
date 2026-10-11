@@ -344,3 +344,18 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   button, polls that keep extra pages, and the lookup adds the chat it gets back; the text stays until the server's
   echo arrives, and an error leaves it in place.
 - **Lesson:** code with no tests collects bugs unnoticed. Code that `await`s must re-check the world afterwards.
+
+## P-22 · Browser tests passed on the Mac but never connected in CI
+
+- **Session:** [016](sessions/016-codex-review-frontend-fixes.md)
+- **Observed:** all 6 browser tests passed locally, then failed in CI's `test-postgres-redis`, each waiting for
+  `#conn-state.is-open` ("element(s) not found"): the page's WebSocket never connected.
+- **Root cause (Confirmed, by experiment; the exact mechanism is a Hypothesis):** `ChannelsLiveServerTestCase` starts
+  Daphne with `multiprocessing`. macOS starts a new process with **spawn** (a fresh Python). Linux uses **fork** (a copy
+  of the test process, with its open connections and state). Forcing fork locally reproduced the CI failure exactly;
+  forcing spawn fixed it. Which inherited thing breaks the server (a Postgres or Redis connection, or the event loop)
+  was not traced.
+- **Fix:** the browser test class sets the start method to `spawn` for its own run and restores it afterwards.
+  With fork as the default, as in CI, the full suite passed locally: 89 OK.
+- **Lesson:** "passes on my machine" can depend on the OS's defaults. When CI and local disagree, list what differs
+  (OS, Python version, settings) and test each difference on purpose.

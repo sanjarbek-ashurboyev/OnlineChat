@@ -87,6 +87,9 @@ state.sending = null;   // on an error frame, or when the socket closes: the tex
 - [P-21 · Four frontend bugs, with no tests to catch them](../problems-and-solutions.md#p-21--four-frontend-bugs-with-no-tests-to-catch-them)
 - **The route handler crashed the first run:** `page.route(url, held.append)` errored inside Playwright, which
   inspects the handler's arguments. `lambda route: held.append(route)` works. (Root cause not traced: *Hypothesis*.)
+- [P-22 · Browser tests passed on the Mac but never connected in CI](../problems-and-solutions.md#p-22--browser-tests-passed-on-the-mac-but-never-connected-in-ci):
+  the first CI run failed all 6 browser tests. Linux forks the server process, macOS spawns it. Fixed by forcing spawn;
+  with fork forced as the default locally, 89 OK.
 - **A test run printed nothing:** I had used `timeout 600 python …`, and macOS has no `timeout` command. That's
   already in GOTCHA.md.
 
@@ -111,7 +114,8 @@ state.sending = null;   // on an error frame, or when the socket closes: the tex
 3. Why does `openChat` return before `sendRead` when the history answer is stale?
 4. What tells the client that its message was saved, given the server sends no "ok" frame?
 5. Why do the browser tests skip on `make test`?
-6. Code reading: in `loadChats`, why keep `state.chats` entries that page 1 doesn't include?
+6. Why did the browser tests pass on the Mac but fail in CI?
+7. Code reading: in `loadChats`, why keep `state.chats` entries that page 1 doesn't include?
 
 <details><summary>Answer key</summary>
 
@@ -124,7 +128,9 @@ state.sending = null;   // on an error frame, or when the socket closes: the tex
    groups, including the sender's.
 5. `ChannelsLiveServerTestCase` runs the server in another process. That process can't see an in-memory SQLite
    database or the test's fake Redis, so the tests need real Postgres and Redis.
-6. Those are older pages the user loaded with "Show more chats". The poll fetches only page 1. Replacing the
+6. Linux starts the server process with fork (a copy of the test process and its state); macOS uses spawn
+   (a fresh Python). The forked server never accepted the socket. The test now forces spawn everywhere.
+7. Those are older pages the user loaded with "Show more chats". The poll fetches only page 1. Replacing the
    whole list would drop them every 45 seconds.
 </details>
 

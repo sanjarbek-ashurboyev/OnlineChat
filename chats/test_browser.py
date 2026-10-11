@@ -5,6 +5,7 @@ two processes can share: Postgres and Redis. Runs in the CI job test-postgres-re
 the SQLite settings. Locally: docker compose up -d, playwright install chromium, then
 python manage.py test chats.test_browser.
 """
+import multiprocessing
 import os
 import unittest
 
@@ -30,6 +31,10 @@ class BrowserTestCase(ChannelsLiveServerTestCase):
         # Playwright's sync API runs an event loop in this thread, which makes Django refuse
         # ORM calls here. The calls are ours and synchronous, so it's safe (Django's docs say so).
         os.environ['DJANGO_ALLOW_ASYNC_UNSAFE'] = 'true'
+        # Start the server as a fresh process (macOS's default). Under Linux's default, fork, the
+        # page's socket never connected (P-22); the copy inherits this process's state.
+        cls._start_method = multiprocessing.get_start_method(allow_none=True)
+        multiprocessing.set_start_method('spawn', force=True)
         super().setUpClass()
         cls.playwright = sync_playwright().start()
         try:
@@ -37,6 +42,7 @@ class BrowserTestCase(ChannelsLiveServerTestCase):
         except Exception as error:  # browser not downloaded
             cls.playwright.stop()
             super().tearDownClass()
+            multiprocessing.set_start_method(cls._start_method, force=True)
             raise unittest.SkipTest(f'needs Chromium: {error}') from error
 
     @classmethod
@@ -45,6 +51,7 @@ class BrowserTestCase(ChannelsLiveServerTestCase):
         cls.playwright.stop()
         super().tearDownClass()
         os.environ.pop('DJANGO_ALLOW_ASYNC_UNSAFE', None)
+        multiprocessing.set_start_method(cls._start_method, force=True)
 
     def setUp(self):
         super().setUp()
