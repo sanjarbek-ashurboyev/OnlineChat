@@ -25,6 +25,7 @@ import uuid
 from dataclasses import dataclass, field
 
 import aiohttp
+from verdict import pct, problems
 
 
 @dataclass
@@ -33,24 +34,21 @@ class Stats:
     connect_errors: int = 0
     drops: int = 0            # sockets closed by the server mid-test
     message_ms: list = field(default_factory=list)
+    delivery_ms: list = field(default_factory=list)   # send -> arrival at the recipient
     ping_ms: list = field(default_factory=list)
     poll_ms: list = field(default_factory=list)
     sent: int = 0
     lost: int = 0             # no echo within --message-timeout
+    to_online: int = 0        # sent while the recipient was connected
+    undelivered: int = 0      # of those, never reached the recipient
     poll_errors: int = 0
     server_errors: int = 0    # {"type": "error"} frames from the consumer
 
     def reset_traffic(self):
         """Forget ramp-up traffic so a step reports only its steady state."""
-        self.message_ms, self.ping_ms, self.poll_ms = [], [], []
-        self.sent = self.lost = self.poll_errors = self.server_errors = 0
-
-
-def pct(values, p):
-    if not values:
-        return None
-    ordered = sorted(values)
-    return ordered[min(len(ordered) - 1, int(len(ordered) * p / 100))]
+        self.message_ms, self.delivery_ms, self.ping_ms, self.poll_ms = [], [], [], []
+        self.sent = self.lost = self.to_online = self.undelivered = 0
+        self.poll_errors = self.server_errors = 0
 
 
 class SimUser:
@@ -64,6 +62,7 @@ class SimUser:
         self.tasks = []
         self.pending = {}      # message text -> send time
         self.ping_sent = None
+        self.closed = False
 
     @property
     def stats(self):
@@ -86,6 +85,7 @@ class SimUser:
             self.stats.connect_errors += 1
             return False
         self.stats.connect_ms.append((time.perf_counter() - started) * 1000)
+        self.run.by_chat.setdefault(self.chat_id, []).append(self)
 
         self.tasks = [asyncio.create_task(self.read()),
                       asyncio.create_task(self.ping_loop()),
@@ -115,13 +115,21 @@ class SimUser:
                     sent = self.pending.pop(data.get('text'), None)
                     if sent is not None:
                         self.stats.message_ms.append((now - sent) * 1000)
-                elif self.active:
+                    continue
+                sent = self.run.to_deliver.pop(data.get('text'), None)
+                if sent is not None:
+                    self.stats.delivery_ms.append((now - sent) * 1000)
+                if self.active:
                     # The open chat marks incoming messages read, like the browser does.
                     await self.ws.send_str(json.dumps({'action': 'read', 'chat_id': self.chat_id}))
             elif kind == 'error':
                 self.stats.server_errors += 1
+        self.closed = True
         if not self.run.stopping:
             self.stats.drops += 1
+
+    def partner_online(self):
+        return any(u is not self and not u.closed for u in self.run.by_chat[self.chat_id])
 
     async def ping_loop(self):
         interval = self.run.args.ping
@@ -155,18 +163,16 @@ class SimUser:
         mean_gap = 60 / self.run.args.msg_rate
         while True:
             await asyncio.sleep(random.expovariate(1 / mean_gap))
+            if self.run.paused:
+                continue
             text = f'lt {uuid.uuid4().hex}'
             self.pending[text] = time.perf_counter()
             self.stats.sent += 1
+            if self.partner_online():
+                self.run.to_deliver[text] = self.pending[text]
+                self.stats.to_online += 1
             await self.ws.send_str(json.dumps(
                 {'action': 'message', 'chat_id': self.chat_id, 'text': text}))
-
-    def expire_pending(self, timeout):
-        cutoff = time.perf_counter() - timeout
-        for text, sent in list(self.pending.items()):
-            if sent < cutoff:
-                del self.pending[text]
-                self.stats.lost += 1
 
 
 class Run:
@@ -177,9 +183,12 @@ class Run:
         self.ws_base = args.url.replace('http', 'ws', 1)
         self.http_timeout = aiohttp.ClientTimeout(total=args.http_timeout)
         self.users = []
+        self.by_chat = {}          # chat id -> connected SimUsers, to find the recipient
+        self.to_deliver = {}       # message text -> send time, until the recipient gets it
         self.attempted = 0
         self.stats = Stats()
         self.stopping = False
+        self.paused = False        # no new messages while a step's last ones are counted
 
     async def ramp_to(self, target):
         gap = 1 / self.args.connect_rate
@@ -195,16 +204,32 @@ class Run:
         if await user.start():
             self.users.append(user)
 
+    def forget_in_flight(self):
+        """Drop messages sent before the step started; their answers aren't this step's."""
+        for user in self.users:
+            user.pending.clear()
+        self.to_deliver.clear()
+
+    async def drain(self):
+        """Stop sending, then wait for in-flight messages. Whatever is still missing is lost."""
+        self.paused = True
+        deadline = time.perf_counter() + self.args.message_timeout
+        while time.perf_counter() < deadline and (
+                self.to_deliver or any(u.pending for u in self.users)):
+            await asyncio.sleep(0.1)
+        self.stats.lost += sum(len(u.pending) for u in self.users)
+        self.stats.undelivered += len(self.to_deliver)
+        self.forget_in_flight()
+
     async def stop(self):
         self.stopping = True
         await asyncio.gather(*(u.stop() for u in self.users), return_exceptions=True)
 
 
 def summarize(run, target):
-    s, args = run.stats, run.args
-    for user in run.users:
-        user.expire_pending(args.message_timeout)
-    connected = len(run.users) - s.drops
+    s = run.stats
+    # Count open sockets, not "connected minus this step's drops": earlier drops stay dropped.
+    connected = sum(1 for u in run.users if not u.closed)
     row = {
         'users': target,
         'connected': connected,
@@ -213,30 +238,20 @@ def summarize(run, target):
         'message_p50_ms': pct(s.message_ms, 50),
         'message_p95_ms': pct(s.message_ms, 95),
         'message_p99_ms': pct(s.message_ms, 99),
+        'messages_to_online': s.to_online,
+        'delivery_p95_ms': pct(s.delivery_ms, 95),
         'ping_p95_ms': pct(s.ping_ms, 95),
         'polls': len(s.poll_ms),
         'poll_p95_ms': pct(s.poll_ms, 95),
         'connect_errors': s.connect_errors,
         'drops': s.drops,
         'lost_messages': s.lost,
+        'undelivered': s.undelivered,
         'poll_errors': s.poll_errors,
         'server_errors': s.server_errors,
     }
-
-    problems = []
-    if connected < target * 0.99:
-        problems.append(f'only {connected}/{target} connected')
-    if s.sent and s.lost / s.sent > 0.01:
-        problems.append(f'{s.lost}/{s.sent} messages lost')
-    polls = len(s.poll_ms) + s.poll_errors
-    if polls and s.poll_errors / polls > 0.01:
-        problems.append(f'{s.poll_errors}/{polls} chat list requests failed')
-    if (row['message_p95_ms'] or 0) > args.max_message_ms:
-        problems.append(f'message p95 {row["message_p95_ms"]:.0f}ms > {args.max_message_ms:.0f}ms')
-    if (row['poll_p95_ms'] or 0) > args.max_poll_ms:
-        problems.append(f'chat list p95 {row["poll_p95_ms"]:.0f}ms > {args.max_poll_ms:.0f}ms')
-    row['healthy'] = not problems
-    row['problems'] = problems
+    row['problems'] = problems(row, run.args)
+    row['healthy'] = not row['problems']
     return row
 
 
@@ -248,7 +263,7 @@ def print_row(row):
     verdict = 'OK' if row['healthy'] else 'FAIL: ' + '; '.join(row['problems'])
     print(f'{row["users"]:>6} {row["connected"]:>6} {row["messages_sent"]:>6} '
           f'{fmt(row["message_p50_ms"]):>6} {fmt(row["message_p95_ms"]):>6} '
-          f'{fmt(row["message_p99_ms"]):>6} {fmt(row["ping_p95_ms"]):>6} '
+          f'{fmt(row["message_p99_ms"]):>6} {fmt(row["delivery_p95_ms"]):>6} {fmt(row["ping_p95_ms"]):>6} '
           f'{fmt(row["poll_p95_ms"]):>6}  {verdict}', flush=True)
 
 
@@ -278,7 +293,7 @@ async def main(args):
     print(f'Target {args.url}  steps {steps}  hold {args.hold:.0f}s  '
           f'{args.active:.0%} active at {args.msg_rate:g}/min\n')
     print(f'{"users":>6} {"online":>6} {"sent":>6} {"msg50":>6} {"msg95":>6} '
-          f'{"msg99":>6} {"ping95":>6} {"list95":>6}  (latencies in ms)')
+          f'{"msg99":>6} {"recv95":>6} {"ping95":>6} {"list95":>6}  (latencies in ms)')
 
     results = []
     connector = aiohttp.TCPConnector(limit=0)
@@ -288,7 +303,10 @@ async def main(args):
             for target in steps:
                 await run.ramp_to(target)
                 run.stats.reset_traffic()
+                run.forget_in_flight()
+                run.paused = False
                 await asyncio.sleep(args.hold)
+                await run.drain()
                 row = summarize(run, target)
                 results.append(row)
                 print_row(row)
@@ -328,11 +346,17 @@ def parse_args():
                    help='Messages per minute per active user.')
     p.add_argument('--ping', type=float, default=30, help='Seconds between pings (app.js PING_MS).')
     p.add_argument('--poll', type=float, default=45, help='Seconds between chat list reloads.')
-    p.add_argument('--max-message-ms', type=float, default=500,
-                   help='Message p95 above this fails the step.')
-    p.add_argument('--max-poll-ms', type=float, default=1000,
+    # Defaults are the targets in docs/scaling/02-plan.md.
+    p.add_argument('--max-message-ms', type=float, default=300,
+                   help='Message (echo and delivery) p95 above this fails the step.')
+    p.add_argument('--max-message-p99-ms', type=float, default=1000,
+                   help='Message p99 above this fails the step.')
+    p.add_argument('--max-poll-ms', type=float, default=300,
                    help='Chat list p95 above this fails the step.')
-    p.add_argument('--message-timeout', type=float, default=10)
+    p.add_argument('--max-error-rate', type=float, default=0.001,
+                   help='Share of failed connects, lost messages or failed requests that fails the step.')
+    p.add_argument('--message-timeout', type=float, default=10,
+                   help='After each step, seconds to wait for in-flight messages before calling them lost.')
     p.add_argument('--connect-timeout', type=float, default=15)
     p.add_argument('--http-timeout', type=float, default=15)
     p.add_argument('--keep-going', action='store_true', help="Don't stop at the first failing step.")

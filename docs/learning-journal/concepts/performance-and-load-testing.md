@@ -37,6 +37,13 @@ than they drain. Waiting time grows roughly like `busy / (1 - busy)`: 0.4/0.6 �
   to `loadtest/tokens.json` (gitignored, because the tokens are live).
 - `loadtest/run.py` uses `aiohttp` to simulate browsers exactly like `app.js`. It reports message,
   ping and chat-list p50/p95/p99 per step, and marks a step failed if p95 or the error rate passes a limit.
+- **How a step is judged (since session 017, `loadtest/verdict.py`):**
+  - Limits default to the plan's targets: message p95 ≤ 300 ms and p99 ≤ 1 s, chat list p95 ≤ 300 ms, errors < 0.1%.
+  - Two message timings: **echo** (send → back on the sender's socket, the plan's SLO) and **delivery**
+    (send → arrives at the recipient, when the recipient is online). Delivery is what a user actually feels.
+  - At the end of a step, sending pauses and the tester waits up to `--message-timeout` for messages in flight.
+    Anything still unanswered is **lost**.
+  - "No measurements" fails a step that sent messages. It never counts as 0 ms.
 - **First result (session 001):** 100 online users healthy, 200 failing, on one process with a heavy
   profile, with the client on the same Mac.
 - **Baseline (session 014), realistic profile, one Daphne process, `DEBUG=False`:**
@@ -44,6 +51,8 @@ than they drain. Waiting time grows roughly like `busy / (1 - busy)`: 0.4/0.6 �
     not the server (see the "confounders" mistake below).
   - From the same Mac: healthy up to **750**, and a cliff at **1,000** (message p95 6.4 s), while the chat
     list (REST) stayed at 39 ms and Daphne used only ~55% of one core. That's the PERF-1 single-thread queue.
+  - **Unconfirmed:** those verdicts came from the old tester, with looser limits (500 ms, 1%) and the bugs in
+    P-23. They need a rerun with the fixed tester (session 017).
 - **Mechanism** ([audit PERF-1…4](../../scaling/01-audit.md#15-confirmed-findings-performance)):
   1. `database_sync_to_async` sends all of a process's ORM calls to **one thread**.
   2. `CONN_MAX_AGE=0` means a new Postgres connection for every call.
@@ -64,6 +73,9 @@ than they drain. Waiting time grows roughly like `busy / (1 - busy)`: 0.4/0.6 �
 ## 7. Common mistakes
 - **Running the load generator on the same machine as the server.** They compete for CPU, so the
   results come out pessimistic. Our first test did this, and the docs say so.
+- **Treating "no data" as good data.** Our first tester read "no echoes at all" as a p95 of 0 ms and
+  called the step healthy ([P-23](../problems-and-solutions.md#p-23--the-load-tester-could-pass-a-step-with-zero-echoes)).
+  Check that a test can fail: point it at a broken server and make sure it says FAIL.
 - **Reporting averages.** An average of 100 ms can hide 5% of users waiting 3 s. Use p95/p99.
 - **Testing an unrealistic workload.** Our first profile had about 6× more messages per user than
   a realistic one. The plan's first task is to re-measure with a realistic profile.
