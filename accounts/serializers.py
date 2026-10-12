@@ -8,6 +8,9 @@ from rest_framework.serializers import ModelSerializer
 from accounts.models import User
 from chats import presence
 
+MAX_AVATAR_BYTES = 2 * 1024 * 1024
+MAX_AVATAR_SIDE = 4096
+
 
 class RegisterSerializer(ModelSerializer):
     confirm_password = CharField(max_length=255, write_only=True)
@@ -48,6 +51,18 @@ class ProfileSerializer(ModelSerializer):
         model = User
         fields = ['id', 'first_name', 'phone_number', 'avatar',]
         read_only_fields = ['id', 'phone_number']
+
+    def validate_avatar(self, value):
+        # Pillow only checks it's an image: a 1-pixel PNG with megabytes of junk after it passed (M-15).
+        # The bytes are already received by now; a cap on the request body belongs in the proxy.
+        if value is None:
+            return value
+        if value.size > MAX_AVATAR_BYTES:
+            raise ValidationError('The photo must be 2 MiB or smaller.')
+        width, height = value.image.size  # read from the header by the field's Pillow check
+        if max(width, height) > MAX_AVATAR_SIDE:
+            raise ValidationError(f'The photo must be at most {MAX_AVATAR_SIDE}×{MAX_AVATAR_SIDE} pixels.')
+        return value
 
 
 class UserLookupSerializer(ModelSerializer):

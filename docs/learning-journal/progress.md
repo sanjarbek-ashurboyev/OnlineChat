@@ -1,6 +1,6 @@
 # Progress
 
-*Updated: 2026-10-11 (session 023).*
+*Updated: 2026-10-11 (session 024).*
 
 **Status words:** **Done** = code written, tests or checks run and passing, committed.
 **Partial** = some of the acceptance criteria are met. **Blocked** = waiting on something outside
@@ -39,8 +39,9 @@ were already fixed on `main` before this journal started.
 | Codex audit 2 (H-02, H-03, M-17, M-18, M-19): no forged IPs (`NUM_PROXIES`), registration limit by IP even with a token, password vs name, race → 400, throttles fail open | **Done**, merged as [PR #29](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/29) | 5 of 6 new tests failed first, then pass; `make test` 102 OK (6 skipped); real Postgres + Redis 108 OK; Ruff clean; `runserver`: forged header → 429 on the 21st; Redis unreachable: old 500, new 401 | [session 019](sessions/019-account-security.md) |
 | Codex audit 2 (H-01, M-01, M-02, M-05): sockets close at token expiry / disabled account / 12 h; atomic 5-socket limit (Lua); bad JSON and NUL/surrogate text get errors | **Done**, merged as [PR #30](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/30) | 7 consumer tests failed first (2 failures, 6 errors), then pass; `make test` 112 OK (8 skipped); real Postgres + Redis 118 OK; Ruff clean; real browser: closed at 18.6 s with 4401, renewed, reconnected, gap message recovered | [session 020](sessions/020-websocket-hardening.md) |
 | Codex audit 2 (H-04, H-06, M-12, L-03): logout drops the old session's work; lost echo → history check; dead socket → reconnect; network errors retried, not signed out; real 429 text | **Done**, merged as [PR #31](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/31) | 10 browser tests failed first (all 10), then pass; browser suite 16 OK twice; `make test` 112 OK (9 skipped); real Postgres + Redis 128 OK; Ruff clean | [session 021](sessions/021-frontend-session-lifecycle.md) |
-| Codex audit 2 (M-04, M-06, M-07, M-08): a saved message is never reported failed; reads carry `up_to`, shared by socket and REST; `peer_read_up_to` repairs lost receipts | **Done** on branch, PR open | 15 new tests failed first (REST, socket, browser); browser suite 19 OK; `make test` 121 OK (10 skipped); real Postgres + Redis 140 OK; Ruff clean | [session 022](sessions/022-message-receipts.md) |
-| Codex audit 2 (M-03, M-09, M-10, M-11): rows in id order; catch-up from a sync boundary on every connect; one page request at a time; history by cursor | **Done** on branch, PR open (stacked on #32) | 5 new tests failed first with the audit's numbers; browser suite 23 OK; `make test` 122 OK (11 skipped); real Postgres + Redis 145 OK twice; Ruff clean | [session 023](sessions/023-message-ordering.md) |
+| Codex audit 2 (M-04, M-06, M-07, M-08): a saved message is never reported failed; reads carry `up_to`, shared by socket and REST; `peer_read_up_to` repairs lost receipts | **Done**, merged as [PR #32](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/32) | 15 new tests failed first (REST, socket, browser); browser suite 19 OK; `make test` 121 OK (10 skipped); real Postgres + Redis 140 OK; Ruff clean | [session 022](sessions/022-message-receipts.md) |
+| Codex audit 2 (M-03, M-09, M-10, M-11): rows in id order; catch-up from a sync boundary on every connect; one page request at a time; history by cursor | **Done**, merged as [PR #33](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/33) | 5 new tests failed first with the audit's numbers; browser suite 23 OK; `make test` 122 OK (11 skipped); real Postgres + Redis 145 OK twice; Ruff clean | [session 023](sessions/023-message-ordering.md) |
+| Codex audit 2 (M-13, M-14, M-15, M-16): the poll refreshes every loaded chat page and the open header; a blocker's photo and status hidden in the chat list; avatars ≤ 2 MiB and 4096 px; old avatar files deleted after the commit | **Done** on branch, PR open | 9 new tests failed first (REST and browser), 3 guards pass; browser suite 25 OK; `make test` 132 OK (12 skipped); real Postgres + Redis 157 OK; Ruff clean | [session 024](sessions/024-privacy-and-uploads.md) |
 
 Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), and 50/50 tests pass locally.
 
@@ -48,7 +49,7 @@ Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), a
 
 | What | How | Result |
 |---|---|---|
-| Test suite | `make test` (`manage.py test --settings=root.settings_test`) | 145 on `fix-message-ordering`, all pass on real Postgres + Redis. Earlier: 140 on `fix-message-receipts`. On SQLite: "Ran 89, OK (skipped=6)": the 2 real-Redis tests and the 4 browser test classes (a class skipped in `setUpClass` counts once) |
+| Test suite | `make test` (`manage.py test --settings=root.settings_test`) | 157 on `fix-privacy-and-uploads`, all pass on real Postgres + Redis. Earlier: 145 on `fix-message-ordering`. On SQLite: "Ran 89, OK (skipped=6)": the 2 real-Redis tests and the 4 browser test classes (a class skipped in `setUpClass` counts once) |
 | Test suite on real services | CI job `test-postgres-redis` (Postgres 17, Redis 7, normal settings) | 53 pass (T-11 branch) |
 | No secrets in history | CI job `secrets` (gitleaks 8.30.1, custom `django-secret-key` rule) | Clean; a planted key is caught |
 | Lint | `ruff check .` (version 0.16.10, as in CI) | Clean |
@@ -62,7 +63,7 @@ Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), a
 
 See the [audit](../scaling/01-audit.md) and its status update. The most important still-open items:
 - SEC-3/4/5 and COR-3 fixed (T-03, T-04, merged). COR-1/4/5 fixed on the T-09 branch, checked in a browser. The redis-py 8 regression (quiet sockets crash) is fixed in PR #21.
-- **Codex audit 2** ([checklist](../scaling/05-codex-audit-2026-10-11.md)): 31 findings + 7 risks; 4 fixed in session 018, 5 in 019, 4 in 020, 4 in 021, 4 in 022, 4 in 023. Left: M-13, M-14, M-15, M-16, M-20, M-22, and the risks R-01…R-07. The load tester should reconnect at token expiry now that browsers do (decision 006).
+- **Codex audit 2** ([checklist](../scaling/05-codex-audit-2026-10-11.md)): 31 findings + 7 risks; 4 fixed in session 018, 5 in 019, 4 in 020, 4 in 021, 4 in 022, 4 in 023, 4 in 024. Left: M-20, M-22, and the risks R-01…R-07. The reverse proxy must cap request bodies (session 024). The load tester should reconnect at token expiry now that browsers do (decision 006).
 - **Codex review #9** (REST read receipts) fixed in session 022 (M-07). #7 (24 h group expiry) fixed in session 020 (M-02). #8 (load tester) fixed in session 017; the baseline rerun is pending. Session 014's capacity numbers need a rerun after #8.
 - **PERF-1/2/3:** one DB thread per process, plus a new DB connection per call (Stage 1).
 - Dependabot backlog cleared: #8–#11 merged; #12 and #13 replaced by #16 ([P-14](problems-and-solutions.md#p-14--dependabot-prs-that-could-never-be-merged)).
@@ -97,6 +98,7 @@ That's self-reported; nothing has been tested yet, so every concept starts at
 | Rate limiting (throttles) | [guide](concepts/rate-limiting.md) | Explained | Session 009 | Run the server, then send 6 wrong logins for one number with `curl` in a loop. Read the 429 and its `Retry-After` header. Predict when the 7th will work, then check. |
 | Reliable delivery, cursors, jitter | [guide](concepts/reliable-delivery-and-reconnects.md) | Explained | Session 011 | With the app running, open a chat, stop the server for 10 s, send a message from the other account over REST, start the server. Predict what the chat shows, then watch DevTools → Network for the `?after=` request. |
 | Testing, CI, test databases, secret scanning | [guide](concepts/testing-and-ci.md) | Explained | Session 007 | Break a test on purpose (change an expected status code), push to a PR branch, and read the CI log to find it. Then explain P-12 in your own words. |
+| File uploads, storage, signals, `on_commit` | [guide](concepts/file-uploads-and-storage.md) | Explained | Session 024 | Upload a photo in the app, then replace it. Before you look, predict what `ls media/avatars` shows; then check. Then upload a 3 MB photo and read the 400. |
 
 Mark a row *Practiced* yourself after doing its exercise. It becomes *Demonstrated* when you
 explain or apply the concept without help, for example by answering a session's review

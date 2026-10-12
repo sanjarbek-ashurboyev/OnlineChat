@@ -495,3 +495,22 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   ([decision 009](decisions/009-cursor-pagination-for-history.md)).
 - **Lesson:** a list fed from several sources needs an order key and a completeness boundary, not trust in arrival order.
 
+## P-32 · The chat list and the poll showed what other screens had hidden or changed
+
+- **Session:** [024](sessions/024-privacy-and-uploads.md)
+- **Observed:** Codex audit M-13, M-14, M-15, M-16, reproduced by tests: the chat list returned the photo, online
+  status and last seen of someone who had blocked the user (their profile answers 404); a 1-pixel PNG with 2 MiB of
+  junk, and a 4097 × 1 image, were accepted; replacing a photo left both files on disk, and removing it or deleting the
+  account left the file; after the 45 s poll, a chat on page 2 kept its unread badge and the open chat's header its old
+  name.
+- **Root causes (Confirmed, by the tests):**
+  - the block check lived in the profile view, not in the serializer that every user-shaped answer goes through;
+  - the only check on an avatar was Pillow's "is this an image?";
+  - nothing deleted a file when the row stopped pointing to it;
+  - the poll fetched page 1 only, and the header was drawn once, in `openChat()`.
+- **Fix:** `blocked_by` in the chat list's serializer context ([decision 010](decisions/010-blocked-peer-in-the-chat-list.md));
+  byte and dimension limits in `ProfileSerializer.validate_avatar()`; signals that delete unused files after the commit
+  ([decision 011](decisions/011-delete-avatar-files-after-commit.md)); the poll fetches every loaded page and redraws
+  the header (`showPeer()`).
+- **Lesson:** each rule has to hold everywhere the same data comes out or goes in, and anything drawn once needs
+  something that redraws it.

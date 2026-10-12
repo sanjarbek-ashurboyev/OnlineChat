@@ -15,6 +15,7 @@ Read these in order the first time. Each one builds on the ones before it.
 | 9 | [Rate limiting](rate-limiting.md) | 3 | A bouncer counting how often each person comes in |
 | 10 | [Reliable delivery and reconnects](reliable-delivery-and-reconnects.md) | 1, 2 | Push for speed, fetch for completeness |
 | 11 | [Pagination: offsets vs cursors](pagination.md) | 10 | Anchor a page to an item, not a position |
+| 12 | [File uploads and stored files](file-uploads-and-storage.md) | 8 | Limit what you keep; delete it only after the commit |
 
 Words used everywhere:
 

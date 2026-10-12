@@ -14,6 +14,8 @@ choose differently. If new evidence changes a decision, update the file and say 
 | [007](007-lost-echo-check-the-history.md) | When a message's echo doesn't come, check the history | Accepted | [021](../sessions/021-frontend-session-lifecycle.md) |
 | [008](008-read-up-to-boundary.md) | Read receipts carry a read-up-to boundary | Accepted | [022](../sessions/022-message-receipts.md) |
 | [009](009-cursor-pagination-for-history.md) | Message history pages by cursor | Accepted | [023](../sessions/023-message-ordering.md) |
+| [010](010-blocked-peer-in-the-chat-list.md) | Someone who blocked you: keep the chat, blank their details | Accepted | [024](../sessions/024-privacy-and-uploads.md) |
+| [011](011-delete-avatar-files-after-commit.md) | Delete old avatar files with our own signals, after the commit | Accepted | [024](../sessions/024-privacy-and-uploads.md) |
 
 The bigger scaling decisions are in the plan, [docs/scaling/02-plan.md](../../scaling/02-plan.md):
 - **Stage 0:** 0.1 where secrets live, 0.2 rate limiting, 0.3 making live delivery recoverable.

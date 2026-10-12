@@ -10,11 +10,14 @@ import multiprocessing
 import os
 import re
 import unittest
+from datetime import timedelta
 
 from channels.testing import ChannelsLiveServerTestCase
 from django.db import connection
+from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from accounts.models import User
 from chats.models import Block, Chat, Message
 from test_helpers import PASSWORD, make_user, phone, token_for
 
@@ -174,11 +177,39 @@ class ChatListTests(BrowserTestCase):
         expect(page.locator('#chat-list li')).to_have_count(51)
         expect(page.get_by_role('button', name='Show more chats')).to_be_hidden()
 
+    def test_the_poll_refreshes_chats_after_the_first_page(self):
+        # Codex audit M-13: the poll fetched page 1 only, so page 2 kept its old unread count.
+        message = Message.objects.create(chat=self.chat, sender=self.friend, text='old news')
+        Message.objects.filter(pk=message.pk).update(created_at=message.created_at - timedelta(hours=1))
+        page = self.open_app(setup=lambda p: p.clock.install())
+        page.get_by_role('button', name='Show more chats').click()
+        friend_row = page.locator('#chat-list li').filter(has=page.locator('.chat-name', has_text=re.compile('^User 2$')))
+        expect(friend_row.locator('.badge')).to_have_text('1')
+
+        Message.objects.filter(pk=message.pk).update(is_read=True)   # read in another tab
+        page.clock.fast_forward(46_000)                              # the chat list poll
+
+        expect(friend_row.locator('.badge')).to_have_count(0)
+
     def test_looking_up_someone_whose_chat_is_not_loaded_opens_it(self):
         page = self.open_app()
         page.get_by_placeholder('Find someone by phone…').fill(phone(2))
         page.keyboard.press('Enter')
         expect(page.locator('#peer-name')).to_have_text('User 2')
+
+
+class PeerHeaderTests(BrowserTestCase):
+    def test_the_poll_refreshes_the_open_chats_header(self):
+        # Codex audit M-13: the header was drawn once, when the chat opened, and never again.
+        page = self.open_app(setup=lambda p: p.clock.install())
+        page.get_by_role('button', name='User 2').click()
+        expect(page.locator('#peer-status')).to_have_text('offline')
+
+        User.objects.filter(pk=self.friend.pk).update(first_name='Renamed', last_seen=timezone.now())
+        page.clock.fast_forward(46_000)   # the chat list poll
+
+        expect(page.locator('#peer-name')).to_have_text('Renamed')
+        expect(page.locator('#peer-status')).to_contain_text('last seen')
 
 
 class ComposerTests(BrowserTestCase):
