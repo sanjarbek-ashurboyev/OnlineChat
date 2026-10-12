@@ -74,6 +74,8 @@ jobs:
       DJANGO_ALLOWED_HOSTS: localhost
       # DEBUG is off, so production's HTTPS redirect would answer every test request with a 301.
       DJANGO_SSL_REDIRECT: "False"
+      # This job is where the browser tests run: a reason to skip them fails the job (Codex audit M-22).
+      REQUIRE_BROWSER_TESTS: "True"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

@@ -16,6 +16,7 @@ Read these in order the first time. Each one builds on the ones before it.
 | 10 | [Reliable delivery and reconnects](reliable-delivery-and-reconnects.md) | 1, 2 | Push for speed, fetch for completeness |
 | 11 | [Pagination: offsets vs cursors](pagination.md) | 10 | Anchor a page to an item, not a position |
 | 12 | [File uploads and stored files](file-uploads-and-storage.md) | 8 | Limit what you keep; delete it only after the commit |
+| 13 | [API contracts and OpenAPI](api-contracts-and-openapi.md) | 8 | The schema is a promise; fail the build on every guess |
 
 Words used everywhere:
 
