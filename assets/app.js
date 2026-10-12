@@ -189,20 +189,44 @@ $('auth-form').addEventListener('submit', async (e) => {
 /* ── chat list ──────────────────────────── */
 
 async function loadChats() {
-  // Every page on screen, not just the first: online dots and unread counts change on all of them
-  // (Codex audit M-13). Keep chats no page returned, e.g. one a lookup opened.
-  const urls = Array.from({ length: state.chatPages }, (_, i) => (i ? `/chats/?page=${i + 1}` : '/chats/'));
-  const pages = await Promise.all(urls.map((url) => api(url)));
-  const results = pages.flatMap((page) => page.results);
-  const fresh = new Set(results.map((c) => c.id));
-  state.chats = [...results, ...state.chats.filter((c) => !fresh.has(c.id))];
-  // A "Show more" that landed meanwhile already set the button from a later page.
-  if (urls.length === state.chatPages) $('more-chats').hidden = !pages[pages.length - 1].next;
+  const pageCount = state.chatPages;
+  const pages = await Promise.all(Array.from({ length: pageCount }, async (_, i) => {
+    try {
+      return await api(i ? `/chats/?page=${i + 1}` : '/chats/');
+    } catch (err) {
+      if (i && err.status === 404) return null;  // a deleted chat can remove the last page
+      throw err;
+    }
+  }));
+  const validPages = [];
+  for (const page of pages) {
+    if (!page) break;
+    validPages.push(page);
+    if (!page.next) break;
+  }
+  // Numbered pages can overlap while live messages reorder the list. Keep one row per id.
+  const refreshed = new Map(validPages.flatMap((page) => page.results).map((chat) => [chat.id, chat]));
+  const outside = state.chats.filter((chat) => !refreshed.has(chat.id));
+  const outsideIds = new Set(outside.map((chat) => chat.id));
+  // A lookup can open a chat beyond the loaded pages. Refresh it through the same privacy rules.
+  const extraPages = await Promise.all([...outsideIds].map((id) => api(`/chats/?chat_id=${id}`)));
+  for (const page of extraPages) {
+    for (const chat of page.results) refreshed.set(chat.id, chat);
+  }
+  // Preserve chats added by "Show more" or a lookup while these requests were pending.
+  // Missing targeted results are deleted chats, so their old cached rows are removed.
+  for (const chat of state.chats) {
+    if (!refreshed.has(chat.id) && !outsideIds.has(chat.id)) refreshed.set(chat.id, chat);
+  }
+  state.chats = [...refreshed.values()];
+  if (pageCount === state.chatPages) {
+    state.chatPages = validPages.length;
+    $('more-chats').hidden = validPages.length < pageCount || !validPages[validPages.length - 1].next;
+  }
   renderChats();
-  const active = results.find((c) => c.id === state.activeId);
+  const active = refreshed.get(state.activeId);
   if (!active) return;
   showPeer(active.participant);
-  // Receipts sent while our socket was down never arrive; the list says how far they got (M-08).
   if (active.peer_read_up_to) showReadUpTo(active.peer_read_up_to);
 }
 

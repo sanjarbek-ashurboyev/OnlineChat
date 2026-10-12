@@ -67,6 +67,28 @@ def validate_avatar(self, value):
   the real `media/` folder, and uses `captureOnCommitCallbacks(execute=True)` to run the queued deletions (a `TestCase`
   never really commits).
 
+### Overlapping profile requests
+
+A **row lock** makes another transaction wait before changing the same database row. A
+**transaction** groups database operations so they commit or roll back together.
+`ProfileSerializer.update()` now uses `transaction.atomic()` and `select_for_update()` to reload
+and lock the user before changing their profile. It saves only the submitted fields with
+`update_fields`, so a name-only request cannot write its old avatar value back.
+
+Example: two requests both authenticated while the avatar was `old.png`. The first uploads
+`new.png`. Without the lock/reload and limited fields, the second request can save its stale
+`old.png` while only trying to change the name. Cleanup then deletes `new.png`. Two actual
+uploads can also both read the same previous filename and leave one replacement orphaned.
+
+Use this when a replacement depends on the current stored value. A transaction alone is not a
+lock; a stale Python model is not refreshed automatically. PostgreSQL enforces this row lock;
+SQLite does not, so `accounts/test_profile_updates.py` includes a PostgreSQL concurrency test.
+Direct ORM updates outside the profile serializer must provide their own concurrency control.
+
+Cleanup still runs after commit. It catches and logs failures because the profile change is
+already saved. A storage outage may leave an old file behind; the log names it for later cleanup.
+There is no background retry worker in this change. See [session 026](../sessions/026-pr34-followups.md).
+
 ## 6. Alternatives
 
 - **Re-encode every upload** (open with Pillow, resize to e.g. 512 × 512, save as a new JPEG). It strips junk and

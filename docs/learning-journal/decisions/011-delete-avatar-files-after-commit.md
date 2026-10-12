@@ -24,6 +24,19 @@ forever. Storage grew, and photos people had removed were kept.
 - `QuerySet.update(avatar=...)` sends no signals, so it would leave the old file. Nothing does that today.
 - Files orphaned before this fix stay; a one-off clean-up would be needed on a server that ran the old code.
 
+## PR #34 follow-up: serialize profile replacements
+
+[Session 026](../sessions/026-pr34-followups.md) reproduced loss of a replacement photo when a
+stale name-only request saved the old filename, and an orphan after overlapping uploads.
+`on_commit` solves rollback ordering; it does not serialize requests.
+
+The profile serializer now reloads the user with `select_for_update()` inside `atomic()` and
+saves only the submitted fields. Merely specifying `update_fields` would fix the name-only
+case but leave two uploads racing. Moving cleanup before commit would break rollback safety.
+Keep the signals for replacement/removal/deletion and shared-file checks; catch and log callback
+failures so a committed profile update still succeeds. Failed deletions require later cleanup;
+automatic retries and historical orphan removal remain outside this change.
+
 ## When another option is better
 - **`django-cleanup`** once several models have files (attachments, voice notes): one well-tested rule for all of them.
 - **A periodic sweep** (list the files, delete those no row references) if files ever live on storage where deleting

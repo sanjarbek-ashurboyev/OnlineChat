@@ -40,6 +40,15 @@ Messages 1–110 exist; the screen shows 61–110 (newest 50). Then 50 new messa
 - **Chat list** (`/chats/`): still offset pages. Its order changes as chats get new messages, so a cursor on a moving
   sort key doesn't fit; the 45 s poll and duplicate filtering cover it.
 
+### Refreshing a changing chat list
+
+[Session 026](../sessions/026-pr34-followups.md) covers overlapping and missing pages. `loadChats()`
+merges results by chat id, recovers from a later page returning 404, and updates the page count.
+A chat opened by lookup may be outside every loaded page. The client refreshes those cached chats
+with `?chat_id=<id>`, using the same authorized chat-list query and blocked-peer masking. This keeps
+header and unread state current without loading all intervening pages. It adds one request per
+such chat; it does not turn concurrent offset requests into a single consistent snapshot.
+
 ## 6. Alternatives
 
 - **Our own `?before=<id>`:** the same idea as the cursor, with readable URLs. More code of our own to test.

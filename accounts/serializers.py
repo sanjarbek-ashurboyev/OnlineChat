@@ -52,6 +52,16 @@ class ProfileSerializer(ModelSerializer):
         fields = ['id', 'first_name', 'phone_number', 'avatar',]
         read_only_fields = ['id', 'phone_number']
 
+    def update(self, instance, validated_data):
+        # Authentication may have loaded this user before another request changed their photo.
+        # Reload under a row lock, and keep the lock through the save and its cleanup signals.
+        with transaction.atomic():
+            instance = User.objects.select_for_update().get(pk=instance.pk)
+            for field, value in validated_data.items():
+                setattr(instance, field, value)
+            instance.save(update_fields=list(validated_data))
+        return instance
+
     def validate_avatar(self, value):
         # Pillow only checks it's an image: a 1-pixel PNG with megabytes of junk after it passed (M-15).
         # The bytes are already received by now; a cap on the request body belongs in the proxy.

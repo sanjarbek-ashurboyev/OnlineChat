@@ -147,7 +147,7 @@ A single page in plain JavaScript (no framework):
 | `GET/PATCH /api/v1/auth/profile/` | `ProfileAPIView` | Your profile |
 | `GET /api/v1/users/lookup/` | `UserLookupAPIView` | Find a user (throttled) |
 | `GET /api/v1/users/<id>/` | `PublicUserAPIView` | Someone's public profile |
-| `GET/POST /api/v1/chats/` | `ChatListCreateAPIView` | List your chats / start one |
+| `GET/POST /api/v1/chats/` | `ChatListCreateAPIView` | List your chats / start one; GET `?chat_id=` refreshes one existing chat |
 | `GET/POST /api/v1/chats/<id>/messages/` | `MessageListCreateAPIView` | History (newest first) / send |
 | `POST /api/v1/chats/<id>/read/` | `MarkChatReadAPIView` | Mark the other person's messages read |
 | `WS /ws/inbox/?token=…` | `InboxConsumer` | Real-time messages, read receipts, ping/pong |
