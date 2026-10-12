@@ -121,8 +121,10 @@ class SimUser:
                     if sent is not None:
                         self.stats.delivery_ms.append((now - sent) * 1000)
                     if self.active:
-                        # The open chat marks incoming messages read, like the browser does.
-                        await self.ws.send_str(json.dumps({'action': 'read', 'chat_id': self.chat_id}))
+                        # The open chat marks incoming messages read up to this one, like the browser
+                        # does; the consumer rejects a receipt without up_to (decision 008).
+                        await self.ws.send_str(json.dumps({'action': 'read', 'chat_id': self.chat_id,
+                                                           'up_to': data.get('id')}))
                 elif kind == 'error':
                     self.stats.server_errors += 1
         finally:

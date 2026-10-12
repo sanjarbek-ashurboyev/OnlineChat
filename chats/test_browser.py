@@ -344,6 +344,34 @@ class SessionLifecycleTests(BrowserTestCase):
         self.send(page, 'the next one')
         self.wait_until(page, lambda: Message.objects.filter(text='the next one').exists())
 
+    def test_enter_during_the_history_check_does_not_send_twice(self):
+        # The timeout used to unlock sending before the history check ended; the text was still in the
+        # composer, so Enter sent it again.
+        def drop_echoes(ws):
+            server = ws.connect_to_server()
+            ws.on_message(server.send)
+            server.on_message(lambda frame: None if is_message_frame(frame) else ws.send(frame))
+
+        def setup(page):
+            page.clock.install()
+            page.route_web_socket('**/ws/inbox/**', drop_echoes)
+
+        held = []
+        page = self.open_app(setup=setup)
+        page.get_by_role('button', name='User 2').click()
+        page.route(re.compile(r'/messages/[?]after='), lambda route: route.continue_() if held else held.append(route))
+        self.send(page, 'only once')
+        self.wait_until(page, lambda: Message.objects.filter(text='only once').exists())
+
+        page.clock.fast_forward(11_000)
+        self.wait_until(page, lambda: held)          # the history check is under way
+        page.keyboard.press('Enter')                 # the text is still in the composer
+        page.wait_for_timeout(500)
+        held[0].continue_()
+
+        expect(page.locator('#message-rows')).to_contain_text('only once')
+        self.assertEqual(Message.objects.filter(text='only once').count(), 1)
+
     def test_a_message_that_never_arrived_keeps_its_text_and_says_so(self):
         def swallow_sends(ws):
             server = ws.connect_to_server()
@@ -452,6 +480,25 @@ class SessionLifecycleTests(BrowserTestCase):
         self.wait_until(page, lambda: len(connections) > 1, timeout=10)
         expect(page.locator('#conn-state.is-open')).to_be_attached()
         expect(page.locator('#app')).to_be_visible()
+
+    def test_a_late_401_from_before_logout_is_not_replayed_for_the_next_account(self):
+        # It used to refresh with the next account's token and send the old request again as them.
+        other = make_user(3)
+        page = self.open_app()
+        held = []
+        page.route('**/api/v1/auth/profile/',
+                   lambda route: held.append(route) if route.request.method == 'PATCH' else route.continue_())
+        page.evaluate("void api('/auth/profile/', {method: 'PATCH', body: {first_name: 'Set by account 1'}})")
+        self.wait_until(page, lambda: held)
+
+        page.locator('#logout').click()
+        self.log_in(page, other)
+        held[0].fulfill(status=401, content_type='application/json', body='{"detail": "Token expired"}')
+        page.wait_for_timeout(1000)
+
+        self.assertEqual(len(held), 1, 'the request was sent again')
+        other.refresh_from_db()
+        self.assertEqual(other.first_name, 'User 3')
 
     def test_a_rate_limit_shows_the_servers_message(self):
         context = self.browser.new_context()   # signed out: the login screen
@@ -577,6 +624,26 @@ class OrderingTests(BrowserTestCase):
 
         expect(page.locator('#message-rows .row')).to_have_count(3)
         self.assertEqual(self.rows(page), ['one', 'two (its live event was lost)', 'three'])
+
+    def test_a_socket_ready_while_the_history_loads_still_catches_up(self):
+        # The catch-up on connect gave up while the history was loading, and nothing retried it, so a
+        # message newer than the history's snapshot but older than the socket never showed.
+        self.say(self.chat, self.friend, 'before')
+        sockets, held = [], []
+        page = self.open_app(setup=lambda p: p.route_web_socket('**/ws/inbox/**', self.keep_sockets(sockets)))
+        page.route(re.compile(rf'/api/v1/chats/{self.chat.id}/messages/$'), lambda route: held.append(route))
+        page.get_by_role('button', name='User 2').click()
+        self.wait_until(page, lambda: held)
+        snapshot = held[0].fetch()                   # the history as the server sees it now
+
+        sockets[0].close(code=1012, reason='server restart')
+        self.say(self.chat, self.friend, 'in the gap')   # while no socket listens: never live
+        self.wait_until(page, lambda: len(sockets) > 1, timeout=10)
+        expect(page.locator('#conn-state.is-open')).to_be_attached()
+        held[0].fulfill(response=snapshot)
+
+        expect(page.locator('#message-rows .row')).to_have_count(2)
+        self.assertEqual(self.rows(page), ['before', 'in the gap'])
 
     def test_a_failed_older_page_is_retried_not_skipped(self):
         # M-10: the page counter moved on before the answer came, so a failure skipped a page.

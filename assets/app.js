@@ -31,6 +31,7 @@ const state = {
   loadingOlder: false,
   loadingMoreChats: false,
   syncedUpTo: null,       // we hold every message of the open chat up to this id (Codex audit M-03)
+  catchUpDue: false,      // a catch-up was asked for while the history loaded; run it once it's in
   seenIds: new Set(),
   session: 0,             // bumped by logout; answers for an earlier session are dropped (Codex audit H-04)
   reconnectTimer: null,
@@ -93,6 +94,9 @@ async function api(path, { method = 'GET', body, isForm = false, retry = true } 
     body: isForm ? body : (body ? JSON.stringify(body) : undefined),
   });
 
+  // Signed out meanwhile: before anything else, or a late 401 would refresh with the next account's
+  // token and send this request again as them.
+  if (session !== state.session) return dropped();
   // Access tokens last 5 minutes; renew once and replay rather than logging out.
   if (res.status === 401 && retry && await refreshAccess()) {
     return api(path, { method, body, isForm, retry: false });
@@ -362,7 +366,8 @@ async function loadHistory(chatId, query = '') {
 /** Fetch what the open chat got while we weren't listening. It starts from syncedUpTo, which
  *  live messages don't move, so one that never arrived live is fetched too (Codex audit M-03). */
 async function catchUp(chatId) {
-  if (state.syncedUpTo === null) return;           // the history isn't loaded yet; it will have these
+  // The history is still loading. Its snapshot may predate the socket, so catch up once it's in.
+  if (state.syncedUpTo === null) { state.catchUpDue = true; return; }
   const opened = state.opened;
   const data = await api(`/chats/${chatId}/messages/?after=${state.syncedUpTo}`);
   if (opened !== state.opened) return;             // the user switched chats meanwhile
@@ -425,6 +430,7 @@ async function openChat(chatId) {
   state.loadingOlder = false;
   $('load-older').disabled = false;
   state.syncedUpTo = null;
+  state.catchUpDue = false;
   state.seenIds.clear();
 
   $('app').dataset.view = 'chat';
@@ -438,6 +444,7 @@ async function openChat(chatId) {
   // Stale: don't draw it, and don't mark a chat read that never reached the screen.
   if (!await loadHistory(chatId)) return;
   scrollToBottom();
+  if (state.catchUpDue) { state.catchUpDue = false; catchUp(chatId); }
 
   // The inbox socket is already open; just clear this chat's unread state.
   sendRead(chatId);
@@ -667,10 +674,12 @@ $('send-form').addEventListener('submit', (e) => {
   // `after` marks where to look in the history if the answer never comes.
   const sent = { chatId: state.activeId, text, after: Math.max(0, ...state.seenIds) };
   state.sending = sent;
-  state.ackTimer = setTimeout(() => {
+  state.ackTimer = setTimeout(async () => {
     if (state.sending !== sent) return;
-    settleSend();
-    reconcileSend(sent);
+    // Still pending while we look: the text is in the composer, and Enter would send it twice.
+    // A late echo, logout or a dead socket settles it sooner.
+    await reconcileSend(sent);
+    if (state.sending === sent) settleSend();
   }, ACK_TIMEOUT_MS);
   $('send-error').hidden = true;
 });
