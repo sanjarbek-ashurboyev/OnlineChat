@@ -1,16 +1,24 @@
 """Delete avatar files no account points to any more: replaced, removed, or the account deleted (M-16)."""
+import logging
+
 from django.db import transaction
 from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 
 from accounts.models import User
 
+logger = logging.getLogger(__name__)
+
 
 def delete_when_unused(name):
     # Only after the commit: a rolled-back change must not lose a photo that's still in use.
     def delete():
-        if not User.objects.filter(avatar=name).exists():
-            User.avatar.field.storage.delete(name)
+        try:
+            if not User.objects.filter(avatar=name).exists():
+                User.avatar.field.storage.delete(name)
+        except Exception:
+            # The database change has committed. A storage failure must not report it as failed.
+            logger.exception('Avatar cleanup failed for %s', name)
     transaction.on_commit(delete)
 
 

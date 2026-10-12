@@ -40,7 +40,12 @@ def chats_for(user):
 
 
 @extend_schema(tags=['chats'])
-@extend_schema_view(post=extend_schema(request=ChatCreateSerializer, responses={201: ChatSerializer}))
+@extend_schema_view(
+    get=extend_schema(parameters=[
+        OpenApiParameter('chat_id', int, description='Refresh one existing chat, including participant privacy and unread state.'),
+    ]),
+    post=extend_schema(request=ChatCreateSerializer, responses={201: ChatSerializer}),
+)
 class ChatListCreateAPIView(ListCreateAPIView):
     permission_classes = [IsAuthenticated]
     throttle_scope = 'chat_create'
@@ -54,9 +59,19 @@ class ChatListCreateAPIView(ListCreateAPIView):
 
     def get_queryset(self):
         me = self.request.user
+        chats = chats_for(me)
+        chat_id = self.request.query_params.get('chat_id') if self.request.method in ('GET', 'HEAD') else None
+        if chat_id is not None:
+            try:
+                chat_id = int(chat_id)
+            except ValueError:
+                chat_id = 0
+            if chat_id < 1:
+                raise ValidationError({'chat_id': 'Must be a positive chat id.'})
+            chats = chats.filter(pk=chat_id)
         latest = Message.objects.filter(chat=OuterRef('pk')).order_by('-created_at')
         return (
-            chats_for(me)
+            chats
             .annotate(
                 last_message_text=Subquery(latest.values('text')[:1]),
                 last_message_at=Subquery(latest.values('created_at')[:1]),

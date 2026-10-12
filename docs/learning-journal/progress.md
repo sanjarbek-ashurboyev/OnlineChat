@@ -73,6 +73,15 @@ See the [audit](../scaling/01-audit.md) and its status update. The most importan
 - Dependabot backlog cleared: #8–#11 merged; #12 and #13 replaced by #16 ([P-14](problems-and-solutions.md#p-14--dependabot-prs-that-could-never-be-merged)).
   Auto-merge is on: for new Dependabot PRs, comment `@dependabot rebase`, then enable auto-merge.
 
+## PR #34 follow-ups (session 026)
+
+**Done on `fix-pr34-followups`:** profile PATCH reloads and locks the row, saves only submitted fields,
+cleanup failures are logged, chat refresh merges ids, refreshes lookup-opened chats and survives vanished pages.
+Six regressions were reproduced on the old code. PostgreSQL/Redis: 166 tests OK (one optional load-test
+skip, subsequently run successfully); four final API guards plus that optional test: 5 OK. SQLite:
+139 tests OK (14 skips). Ruff, JavaScript syntax and
+migration checks pass. See [session 026](sessions/026-pr34-followups.md) for exact results and limitations.
+
 ## Documentation backlog
 
 - None outstanding. Session 001 was written after the fact (see its note). Sessions 003 and 004

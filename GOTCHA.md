@@ -105,6 +105,13 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
   other too, with a test for each. → [P-20](docs/learning-journal/problems-and-solutions.md#p-20--two-doors-one-lock-auth-and-rate-limits-only-on-one-transport)
 - **`loadtest/tokens.json` holds live login tokens.** It's gitignored; keep it that way.
 
+## Profiles and chat refreshes
+
+- **`on_commit` is not a concurrency lock.** Reload and lock the profile row before replacing its avatar; save
+  only submitted fields, and log cleanup errors after commit. → [PR #34 follow-up](docs/learning-journal/sessions/026-pr34-followups.md)
+- **Refreshing numbered pages needs ids and missing-page recovery.** Pages can overlap, disappear, or exclude a
+  lookup-opened chat; test all three. → [PR #34 follow-up](docs/learning-journal/sessions/026-pr34-followups.md)
+
 ## Load testing
 
 - **Fake data must carry a marker real data *can't* have** (seed users use the invalid `+998000` range), and a

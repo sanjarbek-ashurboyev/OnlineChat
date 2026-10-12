@@ -503,6 +503,15 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   junk, and a 4097 × 1 image, were accepted; replacing a photo left both files on disk, and removing it or deleting the
   account left the file; after the 45 s poll, a chat on page 2 kept its unread badge and the open chat's header its old
   name.
+- **PR #34 follow-up (Confirmed):** [session 026](sessions/026-pr34-followups.md) tests exposed five
+  remaining cases: a stale name-only save destroyed a replacement avatar (and overlapping uploads
+  left an orphan); a storage deletion exception escaped after saving; overlapping pages produced
+  duplicate rows; lookup-opened chats outside the loaded pages never refreshed; a vanished last
+  page made every poll reject with 404.
+  The corrections are a locked reload plus limited fields for profile saves, logged cleanup errors,
+  chat merging by id, a membership-checked `chat_id` refresh filter using the existing privacy
+  serializer, and recovery to the remaining valid pages. These do not change token refresh or
+  message acknowledgement/recovery code.
 - **Root causes (Confirmed, by the tests):**
   - the block check lived in the profile view, not in the serializer that every user-shaped answer goes through;
   - the only check on an avatar was Pillow's "is this an image?";
