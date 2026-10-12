@@ -27,37 +27,57 @@ except ImportError:  # pragma: no cover
     sync_playwright = None
 
 
+# CI's browser job sets REQUIRE_BROWSER_TESTS=True. There, any reason to skip is a failure: a green
+# run must mean the browser tests ran (Codex audit M-22). Elsewhere they skip, saying why.
+REQUIRED = os.environ.get('REQUIRE_BROWSER_TESTS') == 'True'
+
+
+def skip_or_fail(reason):
+    if REQUIRED:
+        raise RuntimeError(f'REQUIRE_BROWSER_TESTS is True, but the browser tests can\'t run: {reason}')
+    raise unittest.SkipTest(reason)
+
+
+def restore_env(name, value):
+    if value is None:
+        os.environ.pop(name, None)
+    else:
+        os.environ[name] = value
+
+
 class BrowserTestCase(ChannelsLiveServerTestCase):
     @classmethod
     def setUpClass(cls):
         if connection.vendor == 'sqlite':
-            raise unittest.SkipTest('needs Postgres and Redis')
+            skip_or_fail('needs Postgres and Redis')
         if sync_playwright is None:
-            raise unittest.SkipTest('needs playwright')
+            skip_or_fail('needs playwright')
+        # Each undo is registered before its step. unittest runs class cleanups even when setUpClass
+        # fails half-way, but then never calls tearDownClass (M-22).
+        cls.addClassCleanup(restore_env, 'DJANGO_ALLOW_ASYNC_UNSAFE', os.environ.get('DJANGO_ALLOW_ASYNC_UNSAFE'))
         # Playwright's sync API runs an event loop in this thread, which makes Django refuse
         # ORM calls here. The calls are ours and synchronous, so it's safe (Django's docs say so).
         os.environ['DJANGO_ALLOW_ASYNC_UNSAFE'] = 'true'
         # Start the server as a fresh process (macOS's default). Under Linux's default, fork, the
         # page's socket never connected (P-22); the copy inherits this process's state.
-        cls._start_method = multiprocessing.get_start_method(allow_none=True)
+        cls.addClassCleanup(multiprocessing.set_start_method,
+                            multiprocessing.get_start_method(allow_none=True), force=True)
         multiprocessing.set_start_method('spawn', force=True)
         super().setUpClass()
-        cls.playwright = sync_playwright().start()
         try:
-            cls.browser = cls.playwright.chromium.launch()
-        except Exception as error:  # browser not downloaded
-            cls.playwright.stop()
-            super().tearDownClass()
-            multiprocessing.set_start_method(cls._start_method, force=True)
-            raise unittest.SkipTest(f'needs Chromium: {error}') from error
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.browser.close()
-        cls.playwright.stop()
-        super().tearDownClass()
-        os.environ.pop('DJANGO_ALLOW_ASYNC_UNSAFE', None)
-        multiprocessing.set_start_method(cls._start_method, force=True)
+            cls.playwright = sync_playwright().start()
+            cls.addClassCleanup(cls.playwright.stop)
+            try:
+                cls.browser = cls.playwright.chromium.launch()
+            except Exception as error:
+                # Only "Chromium isn't downloaded" may be a skip, and only where it's allowed.
+                if REQUIRED or "Executable doesn't exist" not in str(error):
+                    raise
+                raise unittest.SkipTest(f'needs Chromium: {error}') from error
+            cls.addClassCleanup(cls.browser.close)
+        except BaseException:
+            super().tearDownClass()   # the server is running, and tearDownClass won't be called
+            raise
 
     def setUp(self):
         super().setUp()

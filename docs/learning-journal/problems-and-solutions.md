@@ -514,3 +514,20 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   the header (`showPeer()`).
 - **Lesson:** each rule has to hold everywhere the same data comes out or goes in, and anything drawn once needs
   something that redraws it.
+
+## P-33 · The schema guessed, and a broken browser passed as a skip
+
+- **Session:** [025](sessions/025-api-contract-and-browser-skips.md)
+- **Observed:** Codex audit M-20 and M-22, reproduced by tests. The OpenAPI schema had 13 warnings, declared no
+  authentication, typed `is_online` and `participant` as strings, gave the read endpoint no response body, and (with
+  no warning) described `POST /chats/`, history pages and avatar uploads wrongly. A Chromium that failed to launch made
+  the browser tests skip, so CI stayed green, and left `DJANGO_ALLOW_ASYNC_UNSAFE=true` behind.
+- **Root causes (Confirmed, by the tests):**
+  - drf-spectacular matches authenticators by exact class, so our subclass of `JWTAuthentication` was unknown;
+  - method fields had no type, and the views described their input serializer as their output;
+  - the generator reads `pagination_class`, which our view didn't set (the `paginator` property chose per request);
+  - `setUpClass` caught every exception as "browser not downloaded" and restored the environment only on success.
+- **Fix:** a `LastSeenJWTScheme` extension, type hints and `@extend_schema` where the generator can't see, separate
+  request schemas, and a test that fails on any schema warning. `REQUIRE_BROWSER_TESTS=True` in CI makes skips errors
+  ([decision 012](decisions/012-required-browser-tests.md)); undo steps are class cleanups registered before each step.
+- **Lesson:** a check that can't fail (a warning nobody reads, a skip that counts as green) isn't a check.
