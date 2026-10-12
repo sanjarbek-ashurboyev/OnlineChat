@@ -52,3 +52,35 @@ class ReaderTests(IsolatedAsyncioTestCase):
         self.assertEqual(run.stats.drops, 1)
         self.assertTrue(user.ws.closed)
         self.assertTrue(sibling.cancelled())    # nothing keeps using the dead socket
+
+
+class RecordingSocket:
+    """Delivers one message from the partner, then ends; keeps what we sent."""
+
+    def __init__(self):
+        self.sent = []
+
+    async def __aiter__(self):
+        yield SimpleNamespace(type=aiohttp.WSMsgType.TEXT,
+                              data=json.dumps({'type': 'message', 'id': 41, 'sender_id': 2, 'text': 'hi'}))
+
+    async def send_str(self, data):
+        self.sent.append(json.loads(data))
+
+    async def close(self):
+        pass
+
+
+@skipUnless(HAS_AIOHTTP, 'needs aiohttp from loadtest/requirements.txt')
+class ReadReceiptTests(IsolatedAsyncioTestCase):
+    async def test_a_read_receipt_names_the_message_it_read(self):
+        # The consumer requires up_to (decision 008) and answers a receipt without one with an
+        # error frame, which the tester counted as a server error.
+        run = SimpleNamespace(stats=Stats(), stopping=True, to_deliver={})
+        user = SimUser(run, {'user_id': 1, 'chat_id': 7, 'token': 't'}, active=True)
+        user.ws = RecordingSocket()
+        user.tasks = []
+
+        await user.read()
+
+        self.assertEqual(user.ws.sent, [{'action': 'read', 'chat_id': 7, 'up_to': 41}])

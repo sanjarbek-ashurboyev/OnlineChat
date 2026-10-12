@@ -531,3 +531,23 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   request schemas, and a test that fails on any schema warning. `REQUIRE_BROWSER_TESTS=True` in CI makes skips errors
   ([decision 012](decisions/012-required-browser-tests.md)); undo steps are class cleanups registered before each step.
 - **Lesson:** a check that can't fail (a warning nobody reads, a skip that counts as green) isn't a check.
+
+## P-34 · A late answer acted for the wrong account, sent twice, or left a gap
+
+- **Session:** [026](sessions/026-session-replay-and-recovery.md)
+- **Observed:** four gaps Codex reproduced at `1abe93c`, each now a failing-first test:
+  - a 401 for account A's profile update, arriving after B signed in, was refreshed with B's token and sent again
+    (the server got the request twice, the second time as B);
+  - after a lost echo, Enter during the history check sent the same message again (2 rows instead of 1);
+  - a socket that became ready while the history loaded never caught up: a message between the history's snapshot
+    and the socket was missing (1 row instead of 2);
+  - every load-test read receipt lacked `up_to` and came back as an error frame: 169 errors for 167 messages.
+- **Root causes (Confirmed, by the tests):**
+  - `api()` checked the session after the refresh-and-retry step, not before it;
+  - the timeout settled the send *before* the history check, not after;
+  - `catchUp()` returned when there was no boundary yet, and nothing ran it later;
+  - `loadtest/run.py` wasn't updated when `up_to` became required in session 022.
+- **Fix:** the session check moved up to right after `fetch`; the send settles after reconciliation; `catchUpDue`
+  remembers a skipped catch-up for after the history; the tester sends `up_to` (the message's id).
+- **Lesson:** "after this `await`, is it still the same world?" applies to every step that acts on an answer, not
+  only to drawing it. And a protocol change must update every client, the load tester included.

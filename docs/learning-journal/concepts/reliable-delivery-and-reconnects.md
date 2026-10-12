@@ -79,6 +79,9 @@ Two deadlines cover both:
 - **Acknowledgement timeout:** a sent message waits for its echo for 10 s at most. Then the page asks the
   history whether it was saved: if yes, it shows it and clears the composer; if not, it keeps the text and
   says the message may not have been sent. Before, one lost echo blocked every later send.
+- **Pending until it's settled** (session 026): while the page asks the history, the message is still "in
+  flight", so Enter can't send the same text again. Only an answer (the echo, the history check), logout or a
+  dead socket settles it.
 
 ### Sessions in the browser (session 021)
 
@@ -87,11 +90,21 @@ bumps; `api()` and `refreshAccess()` remember it when they start, and an answer 
 **dropped**: it returns a promise that never settles, so the caller's next step (draw the chats, save
 the tokens) never runs.
 
+**Check before acting on the answer, not only before using it** (session 026). The check used to come after
+`api()`'s "401 → refresh → send again" step. A late 401 from account A, arriving after B signed in, refreshed with
+**B's** token and sent A's request again as B. The session is now checked right after `fetch` returns, before
+any refresh or retry.
+
 ### The sync boundary (session 023)
 
 Catch-up used to start after the newest message *seen*. A message lost live before it was then never fetched.
 `state.syncedUpTo` is the newest id we know we hold **everything** up to: the first history page sets it, catch-up
 (`?after=syncedUpTo`) moves it, live messages don't. Catch-up runs on every connect, the first one included.
+
+**Snapshot vs subscription** (session 026). Two sources fill the chat: a *snapshot* (the history request) and a
+*subscription* (the socket). A message newer than the snapshot but older than the subscription is in neither.
+If the socket becomes ready while the history is loading, catch-up can't start yet (there's no boundary), so it
+is remembered (`state.catchUpDue`) and runs as soon as the history is in. Before, it just gave up.
 
 ### Read receipts as a boundary (session 022)
 
