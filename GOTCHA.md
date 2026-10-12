@@ -56,11 +56,20 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
   Use Python's `subprocess.run(..., timeout=40)` instead.
 - **"0 tests ran" is not "tests pass".**
 - **Browser tests (`chats/test_browser.py`) skip on `make test`.** Run them with Docker up:
-  `python manage.py test chats.test_browser`. A skip is not a pass.
+  `python manage.py test chats.test_browser`. A skip is not a pass: CI sets `REQUIRE_BROWSER_TESTS=True`, which turns
+  any skip into an error ([decision 012](docs/learning-journal/decisions/012-required-browser-tests.md)).
+- **Never `assertIn`/`assertNotIn` against `os.environ`.** The failure message prints every variable, secrets
+  included, into the log. Assert on `os.environ.get(name)` (session 025).
+- **If `setUpClass` fails half-way, `tearDownClass` never runs.** Register each undo with `cls.addClassCleanup`
+  before the step it undoes. → [P-33](docs/learning-journal/problems-and-solutions.md#p-33--the-schema-guessed-and-a-broken-browser-passed-as-a-skip)
+- **A schema warning is a wrong line in the API contract.** `root/test_schema.py` fails on any; fix the cause
+  (a type hint, `@extend_schema`), don't silence it.
 - **macOS spawns processes, Linux forks them.** Code that starts a process can pass on the Mac and fail in CI.
   Reproduce with `multiprocessing.set_start_method('fork', force=True)`. → [P-22](docs/learning-journal/problems-and-solutions.md#p-22--browser-tests-passed-on-the-mac-but-never-connected-in-ci)
 - **After an `await` in `app.js`, the user may even have signed out.** `api()` drops answers from an earlier
   session (`state.session`); new async code must go through it or check the session itself. → [P-29](docs/learning-journal/problems-and-solutions.md#p-29--logout-didnt-stop-the-previous-sessions-work)
+  Check it **before** acting on an answer (a refresh, a retry), not only before using it. → [P-34](docs/learning-journal/problems-and-solutions.md#p-34--a-late-answer-acted-for-the-wrong-account-sent-twice-or-left-a-gap)
+- **A load-test verdict ignores `server_errors`.** 169 error frames still gave "OK" (session 026). Read that column.
 - **After an `await` in `app.js`, the user may have moved on.** Check the answer still belongs to what's on screen
   before drawing it. → [P-21](docs/learning-journal/problems-and-solutions.md#p-21--four-frontend-bugs-with-no-tests-to-catch-them)
 - **In a `subTest` loop, keep every assertion of a case inside its `with self.subTest(...)`.** One outside it ends
@@ -137,6 +146,8 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
   point `REDIS_PORT` at a free port instead. → [P-26](docs/learning-journal/problems-and-solutions.md#p-26--stopping-dockers-redis-didnt-stop-the-apps-redis)
 - **"Up (healthy)" in `docker compose ps` isn't "reachable".** Check the `PORTS` column shows `0.0.0.0:6379->6379`.
   Our Redis came back unpublished after a stop/start while another Redis held the port. → [P-28](docs/learning-journal/problems-and-solutions.md#p-28--dockers-redis-came-back-without-its-port)
+- **"Connection refused" on 5432/6379 and `docker compose ps` can't reach the daemon: Docker Desktop isn't running**
+  (it stops after a restart). `open -a Docker`, then wait for both services to be healthy (session 025).
 - **Port 5432 on this Mac belongs to a Homebrew Postgres 14**, not the Docker one, and it's too old for Django 6.1.
   Stop it (`brew services stop postgresql@14`) or map Docker to another port. → [P-04](docs/learning-journal/problems-and-solutions.md#p-04--makemigrations---check-warned-it-couldnt-connect-to-postgres)
 

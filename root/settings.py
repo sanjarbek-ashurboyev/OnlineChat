@@ -202,4 +202,6 @@ SPECTACULAR_SETTINGS = {
     'DESCRIPTION': 'Your project description',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
+    # Separate request and response schemas: an avatar is a file going in and a link coming out.
+    'COMPONENT_SPLIT_REQUEST': True,
 }

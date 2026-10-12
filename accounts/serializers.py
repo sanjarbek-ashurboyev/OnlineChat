@@ -91,7 +91,7 @@ class PublicUserSerializer(ModelSerializer):
         model = User
         fields = ['id', 'display_name', 'avatar', 'is_online', 'last_seen']
 
-    def get_is_online(self, obj):
+    def get_is_online(self, obj) -> bool:
         # A list view pre-builds `presence` in one Redis round trip; a detail
         # view has no map and asks about the single user.
         presence_map = self.context.get('presence')

@@ -127,11 +127,15 @@ A single page in plain JavaScript (no framework):
   the full ASGI stack with `WebsocketCommunicator`, in a `TransactionTestCase`) hold 53 tests (T-11 branch).
 - `test_helpers.py` has shared builders (`make_user`, `token_for`) and `FakePresenceMixin`,
   which swaps Redis presence for a dict.
+- `root/test_schema.py` checks the OpenAPI schema: no generator warnings, and the parts clients rely on
+  (security, field types, response bodies, pagination) match what the views return.
 - Run them with `make test`. Lint with `ruff check .` (rules in `ruff.toml`).
 - `.github/workflows/tests.yml` has four jobs, run on every PR and every push to `main`:
   - `lint`: Ruff.
   - `test`: `pip-audit`, the tests on SQLite, `makemigrations --check`, `check --deploy --tag security`.
-  - `test-postgres-redis`: the tests against Postgres 17 and Redis 7 with the normal settings.
+  - `test-postgres-redis`: the tests against Postgres 17 and Redis 7 with the normal settings, browser tests
+    included. It sets `REQUIRE_BROWSER_TESTS=True`, so a browser test that can't run fails the job instead of
+    skipping ([decision 012](decisions/012-required-browser-tests.md)).
   - `secrets`: gitleaks over the full history, with `.gitleaks.toml` and `.gitleaksignore`.
 - The `protect-main` ruleset requires a PR and all four jobs before anything reaches `main`.
 - Dependabot opens update PRs (`.github/dependabot.yml`).

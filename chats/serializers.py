@@ -1,5 +1,11 @@
 from django.db.models import Q
-from rest_framework.fields import IntegerField, SerializerMethodField
+from drf_spectacular.utils import extend_schema_field, inline_serializer
+from rest_framework.fields import (
+    CharField,
+    DateTimeField,
+    IntegerField,
+    SerializerMethodField,
+)
 from rest_framework.serializers import ModelSerializer, Serializer, ValidationError
 
 from accounts.models import User
@@ -29,6 +35,7 @@ class ChatSerializer(ModelSerializer):
         model = Chat
         fields = ['id', 'participant', 'last_message', 'unread_count', 'peer_read_up_to', 'created_at']
 
+    @extend_schema_field(PublicUserSerializer)
     def get_participant(self, obj):
         me = self.context['request'].user
         other = obj.user2 if obj.user1_id == me.pk else obj.user1
@@ -44,6 +51,9 @@ class ChatSerializer(ModelSerializer):
             data.update(avatar=None, is_online=False, last_seen=None)
         return data
 
+    @extend_schema_field(inline_serializer('LastMessage', allow_null=True, fields={
+        'text': CharField(), 'created_at': DateTimeField(),
+    }))
     def get_last_message(self, obj):
         # Populated by Subquery in the view's queryset; None on an empty chat.
         text = getattr(obj, 'last_message_text', None)

@@ -83,7 +83,16 @@ make tests fast and independent, but they can drift from the real thing. The rea
 - **Controlling time** (session 021): `page.clock.install()` before loading the page fakes its timers;
   `page.clock.fast_forward(11_000)` runs everything due in the next 11 s at once. A 10 s timeout tests in milliseconds.
 - **Waiting:** `expect(locator).to_have_count(50)` retries until it's true (5 s at most). Don't sleep and hope.
+- **Controlling *when* the server answered** (session 026): `route.fetch()` sends a held request to the server now
+  and returns its answer; `route.fulfill(response=answer)` gives it to the page later. The page then sees a
+  snapshot taken *before* things the test does in between.
 - **Run locally:** `docker compose up -d`, `playwright install chromium`, then `python manage.py test chats.test_browser`.
+- **A skip must never hide a failure** (session 025): a skipped test prints `s` and the run still says `OK`. In CI's
+  `test-postgres-redis` job, `REQUIRE_BROWSER_TESTS=True` turns every reason to skip (SQLite, no Playwright, no
+  Chromium) into an error. Locally, only "Chromium isn't downloaded" may skip; any other launch error fails.
+  [Decision 012](../decisions/012-required-browser-tests.md).
+- **Class cleanups** (session 025): if `setUpClass` fails half-way, unittest never calls `tearDownClass`, but it
+  does run everything registered with `cls.addClassCleanup(...)`. Register each undo *before* the step it undoes.
 - Why Playwright: [decision 004](../decisions/004-browser-tests-with-playwright.md).
 
 ## 6. Alternatives
@@ -100,6 +109,7 @@ make tests fast and independent, but they can drift from the real thing. The rea
 - **Using `TestCase` for code that closes or manages connections**, like Channels consumers.
 - **Testing only the happy path.** Our refresh tests also check that garbage and *access* tokens are refused.
 - **Allowing merges without required checks.** Then CI is only advice.
+- **Treating a skip as a pass.** "OK (skipped=8)" can mean the eight most important tests never ran.
 
 ## 8. When to use it
 Always, for anything you'll keep. Write the test that reproduces a bug *before* fixing it, so you know the fix works.

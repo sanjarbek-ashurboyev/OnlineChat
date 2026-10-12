@@ -2,8 +2,14 @@ import logging
 
 from django.db.models import Count, F, Max, OuterRef, Q, Subquery
 from django.shortcuts import get_object_or_404
-from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    extend_schema,
+    extend_schema_view,
+    inline_serializer,
+)
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.fields import IntegerField
 from rest_framework.generics import ListCreateAPIView
 from rest_framework.pagination import CursorPagination, PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
@@ -34,9 +40,12 @@ def chats_for(user):
 
 
 @extend_schema(tags=['chats'])
-@extend_schema_view(get=extend_schema(parameters=[
-    OpenApiParameter('chat_id', int, description='Refresh one existing chat, including participant privacy and unread state.'),
-]))
+@extend_schema_view(
+    get=extend_schema(parameters=[
+        OpenApiParameter('chat_id', int, description='Refresh one existing chat, including participant privacy and unread state.'),
+    ]),
+    post=extend_schema(request=ChatCreateSerializer, responses={201: ChatSerializer}),
+)
 class ChatListCreateAPIView(ListCreateAPIView):
     permission_classes = [IsAuthenticated]
     throttle_scope = 'chat_create'
@@ -113,11 +122,13 @@ class HistoryPagination(CursorPagination):
 @extend_schema(tags=['chats'])
 @extend_schema_view(get=extend_schema(parameters=[
     OpenApiParameter('after', int, description='Only messages with a larger id, oldest first. '
-                     'Used after a reconnect to fetch what the socket missed.'),
+                     'Used after a reconnect to fetch what the socket missed. Pages by number (`?page=`), '
+                     'not by cursor; `count` is included.'),
 ]))
 class MessageListCreateAPIView(ListCreateAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = MessageSerializer
+    pagination_class = HistoryPagination
     throttle_scope = 'message_send'
 
     def get_throttles(self):
@@ -130,7 +141,7 @@ class MessageListCreateAPIView(ListCreateAPIView):
         # checks whether there's a `next`.
         if not hasattr(self, '_paginator'):
             catching_up = 'after' in self.request.query_params
-            self._paginator = PageNumberPagination() if catching_up else HistoryPagination()
+            self._paginator = PageNumberPagination() if catching_up else self.pagination_class()
         return self._paginator
 
     def get_chat(self):
@@ -174,7 +185,9 @@ class MessageListCreateAPIView(ListCreateAPIView):
             logger.exception('broadcast failed for message %s', message.pk)
 
 
-@extend_schema(tags=['chats'], request=ReadSerializer, responses={200: None})
+@extend_schema(tags=['chats'], request=ReadSerializer, responses={200: inline_serializer('MarkReadResponse', fields={
+    'marked_read': IntegerField(help_text='How many messages this call marked read.'),
+})})
 class MarkChatReadAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
