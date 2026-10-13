@@ -7,8 +7,8 @@ from django.test import SimpleTestCase
 from drf_spectacular.drainage import GENERATOR_STATS
 from drf_spectacular.generators import SchemaGenerator
 
-# Login, refresh and registration are for people without a token.
-PUBLIC = {'/api/v1/auth/login/', '/api/v1/auth/token/refresh/', '/api/v1/auth/register/'}
+# Login, refresh, logout and registration are for people without a (valid) access token.
+PUBLIC = {'/api/v1/auth/login/', '/api/v1/auth/token/refresh/', '/api/v1/auth/logout/', '/api/v1/auth/register/'}
 
 
 class SchemaTests(SimpleTestCase):

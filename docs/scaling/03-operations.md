@@ -111,6 +111,7 @@ says which test proves the mitigation works.
 - **Tests:** oversize upload → 400.
 
 **T-07 · Refresh rotation and server-side logout** · M · 2–4 h · Next? no
+- **Status (2026-10-13): done** (session 030, [decision 014](../learning-journal/decisions/014-refresh-rotation-and-logout.md)). Rotation + blacklist; `POST /auth/logout/`; the client shares one refresh per tab and picks up another tab's renewal. Deploy runs `migrate` (new `token_blacklist` tables); schedule `manage.py flushexpiredtokens` daily.
 - **Steps:**
   1. `SIMPLE_JWT = {'ROTATE_REFRESH_TOKENS': True, 'BLACKLIST_AFTER_ROTATION': True}`.
   2. Add `rest_framework_simplejwt.token_blacklist` to apps and run its migration.

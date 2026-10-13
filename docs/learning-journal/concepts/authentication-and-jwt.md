@@ -38,6 +38,15 @@ jwt.decode(token, 'wrong-secret', algorithms=['HS256'])    # raises InvalidSigna
 - **SimpleJWT** issues tokens at `POST /api/v1/auth/login/`. There are two:
   - an **access** token (default life 5 min), sent with every request;
   - a **refresh** token (default 1 day), used only to get a new access token at `/auth/token/refresh/`.
+- **Refresh tokens work once, and logout ends them** (T-07, session 030,
+  [decision 014](../decisions/014-refresh-rotation-and-logout.md)):
+  - *Rotation:* every refresh answers with a new refresh token too, and the old one goes on a **blacklist**
+    (a database table, `token_blacklist`). A stolen refresh token stops working as soon as the real user refreshes.
+  - *Logout:* `POST /auth/logout/ {"refresh": ...}` blacklists the refresh token, so it can't make new access tokens.
+  - *Only refresh tokens are checked against the blacklist.* An access token stays valid until it expires
+    (≤ 5 min), and so does a socket opened with it. That's the price of not querying the database per request.
+  - *In the browser,* one tab never spends the same refresh token twice (`state.renewal` is shared), and picks up
+    a token another tab of the same account just saved (`renewTokens()` in `assets/app.js`).
 - **REST:** `accounts/authentication.py` `LastSeenJWTAuthentication` checks the `Authorization: Bearer …`
   header, and also updates `last_seen` at most once a minute.
 - **WebSocket:** `chats/middleware.py` `user_from_token()` checks `?token=`. A bad token makes the user
@@ -56,7 +65,7 @@ jwt.decode(token, 'wrong-secret', algorithms=['HS256'])    # raises InvalidSigna
 | Option | Pros | Cons |
 |---|---|---|
 | Session cookie | Easy to revoke (delete the row); Django built-in | Needs CSRF protection; awkward for mobile apps and WebSockets |
-| **JWT (HS256)** | No lookup per request; works on any transport | Can't be revoked before `exp` (SEC-7); a leaked key breaks everything |
+| **JWT (HS256)** | No lookup per request; works on any transport | An access token can't be revoked before `exp` (SEC-7; refresh tokens can since T-07); a leaked key breaks everything |
 | JWT (RS256) | Signed with a private key, verified with a public key, so other services can verify without being able to sign | More setup |
 | OAuth / OpenID Connect provider | Delegate login to Google and others | External dependency; overkill here |
 
@@ -64,6 +73,8 @@ jwt.decode(token, 'wrong-secret', algorithms=['HS256'])    # raises InvalidSigna
 - **Committing the signing key** (we did; fixed in T-01). Anyone who reads it can be anyone.
 - **Thinking JWT payloads are secret.** They're readable by anyone.
 - **Long-lived access tokens.** Because JWTs can't be revoked, keep them short and refresh them.
+- **Turning on rotation without fixing the client.** With single-use refresh tokens, two requests that refresh at
+  the same moment, or two tabs with their own copy, spend the same token twice, and the second one signs the user out.
 - **Checking a token only when a long-lived connection opens.** A WebSocket can stay open for hours, so its
   token expires *during* the connection. Until session 020, ours stayed authorized forever.
 - **Confusing authentication with authorization.** A valid token proves who you are. You still have to

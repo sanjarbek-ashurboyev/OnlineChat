@@ -130,6 +130,50 @@ class LoginTests(TestCase):
         self.assertIsNotNone(self.user.last_seen)
 
 
+class RefreshRotationAndLogoutTests(TestCase):
+    """T-07 (SEC-7): a refresh token works once, and logging out ends it on the server."""
+    REFRESH_URL = '/api/v1/auth/token/refresh/'
+    LOGOUT_URL = '/api/v1/auth/logout/'
+
+    def setUp(self):
+        cache.clear()  # refresh and logout are throttled
+        self.addCleanup(cache.clear)
+        self.user = make_user()
+        self.tokens = APIClient().post('/api/v1/auth/login/',
+                                       {'phone_number': phone(1), 'password': PASSWORD}).data
+
+    def refresh(self, token):
+        return APIClient().post(self.REFRESH_URL, {'refresh': token})
+
+    def test_refreshing_returns_a_new_refresh_token_and_retires_the_old_one(self):
+        renewed = self.refresh(self.tokens['refresh'])
+        self.assertEqual(renewed.status_code, 200)
+        self.assertIn('refresh', renewed.data)
+        self.assertNotEqual(renewed.data['refresh'], self.tokens['refresh'])
+
+        self.assertEqual(self.refresh(self.tokens['refresh']).status_code, 401, 'a stolen old token is useless')
+        self.assertEqual(self.refresh(renewed.data['refresh']).status_code, 200)
+
+    def test_after_logout_the_refresh_token_is_refused(self):
+        response = APIClient().post(self.LOGOUT_URL, {'refresh': self.tokens['refresh']})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.refresh(self.tokens['refresh']).status_code, 401)
+
+    def test_logout_needs_no_access_token(self):
+        # The access token may have expired already; the refresh token is the proof.
+        response = APIClient().post(self.LOGOUT_URL, {'refresh': self.tokens['refresh']})
+        self.assertEqual(response.status_code, 200)
+
+    def test_logout_with_a_bad_or_an_access_token_is_refused(self):
+        self.assertEqual(APIClient().post(self.LOGOUT_URL, {'refresh': 'garbage'}).status_code, 401)
+        self.assertEqual(APIClient().post(self.LOGOUT_URL, {'refresh': self.tokens['access']}).status_code, 401)
+
+    def test_logout_ends_only_that_login(self):
+        other = APIClient().post('/api/v1/auth/login/', {'phone_number': phone(1), 'password': PASSWORD}).data
+        APIClient().post(self.LOGOUT_URL, {'refresh': self.tokens['refresh']})
+        self.assertEqual(self.refresh(other['refresh']).status_code, 200, 'another device stays signed in')
+
+
 class AuthThrottleTests(TestCase):
     """SEC-3: login, registration and refresh are rate limited."""
     LOGIN = '/api/v1/auth/login/'

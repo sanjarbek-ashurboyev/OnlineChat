@@ -45,7 +45,8 @@ with a REST API for chat history.
 | Endpoint | Description |
 |---|---|
 | `POST /api/v1/auth/register/` | Create an account |
-| `POST /api/v1/auth/login/` · `/auth/token/refresh/` | Get and refresh JWT tokens |
+| `POST /api/v1/auth/login/` · `/auth/token/refresh/` | Get and refresh JWT tokens (each refresh token works once) |
+| `POST /api/v1/auth/logout/` | End a login: `{"refresh": "..."}` can't be used again |
 | `GET/PATCH /api/v1/auth/profile/` | Your profile and avatar |
 | `GET/POST /api/v1/chats/` | List your chats, or start one with `{"phone_number": "..."}` |
 | `GET/POST /api/v1/chats/<id>/messages/` | Message history (paginated) or send a message |

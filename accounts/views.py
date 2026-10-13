@@ -5,7 +5,11 @@ from rest_framework.generics import (
     RetrieveUpdateAPIView,
 )
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework_simplejwt.views import (
+    TokenBlacklistView,
+    TokenObtainPairView,
+    TokenRefreshView,
+)
 
 from accounts.models import User
 from accounts.serializers import (
@@ -34,6 +38,12 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 
 @extend_schema(tags=['auth'])
 class CustomTokenRefreshView(TokenRefreshView):
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'refresh'
+
+@extend_schema(tags=['auth'])
+class LogoutView(TokenBlacklistView):
+    """Blacklists the refresh token. Needs no access token: it may have expired, and the refresh token is the proof."""
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'refresh'
 

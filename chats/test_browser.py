@@ -15,6 +15,7 @@ from datetime import timedelta
 from channels.testing import ChannelsLiveServerTestCase
 from django.db import connection
 from django.utils import timezone
+from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.models import User
@@ -670,3 +671,47 @@ class OrderingTests(BrowserTestCase):
 
         expect(page.locator('#message-rows .row')).to_have_count(100)
         self.assertEqual(self.rows(page)[0], 'm021')
+
+
+class RefreshRotationTests(BrowserTestCase):
+    """T-07: a refresh token works once. A tab must never spend one twice, must pick up a renewal another
+    tab made, and logout must retire the token on the server."""
+
+    RENEW_IN_ANOTHER_TAB = """async () => {
+        const res = await fetch('/api/v1/auth/token/refresh/', {method: 'POST',
+            headers: {'Content-Type': 'application/json'}, body: JSON.stringify({refresh: state.refresh})});
+        return res.json();
+    }"""
+
+    def test_two_requests_that_need_a_new_token_share_one_refresh(self):
+        page = self.open_app(refresh=True)
+        refreshes = []
+        page.on('request', lambda request: refreshes.append(request.url)
+                if request.url.endswith('/auth/token/refresh/') else None)
+        results = page.evaluate("""() => {
+            state.access = 'expired';
+            return Promise.all([api('/auth/profile/'), api('/chats/')].map((p) => p.then(() => 'ok', (e) => e.status)));
+        }""")
+        self.assertEqual(results, ['ok', 'ok'])
+        self.assertEqual(len(refreshes), 1)
+
+    def test_a_renewal_made_by_another_tab_is_picked_up(self):
+        page = self.open_app(refresh=True)
+        renewed = page.evaluate(self.RENEW_IN_ANOTHER_TAB)  # retires the token this tab holds
+        page.evaluate(f"localStorage.setItem('refresh', '{renewed['refresh']}')")
+        result = page.evaluate("state.access = 'expired'; api('/auth/profile/').then((p) => p.id, (e) => e.status)")
+        self.assertEqual(result, self.me.id)
+
+    def test_another_accounts_token_is_never_picked_up(self):
+        page = self.open_app(refresh=True)
+        page.evaluate(self.RENEW_IN_ANOTHER_TAB)
+        page.evaluate(f"localStorage.setItem('refresh', '{RefreshToken.for_user(self.friend)}')")
+        result = page.evaluate("state.access = 'expired'; api('/auth/profile/').then((p) => p.id, (e) => e.status)")
+        self.assertEqual(result, 401)
+
+    def test_logout_retires_the_refresh_token_on_the_server(self):
+        page = self.open_app(refresh=True)
+        token = page.evaluate('state.refresh')
+        with page.expect_request('**/api/v1/auth/logout/', timeout=5000):
+            page.locator('#logout').click()
+        self.wait_until(page, lambda: BlacklistedToken.objects.filter(token__token=token).exists())
