@@ -177,7 +177,7 @@ says which test proves the mitigation works.
 | ID | Task | Pri | Effort | Depends on | Files | Acceptance |
 |---|---|---|---|---|---|---|
 | T-13 | Django psycopg 3 connection pool (Decision 2.1). **Done (session 032):** per call p95 7.6 → 0.67 ms; one process healthy at 500 → **2,000+** (same test, same Mac) | H | 2–4 h | T-08, T-12 | `root/settings.py` | DB time per WS call < 1 ms p95; load test ceiling recorded before/after |
-| T-15 | `touch_last_seen` at most once per 60 s per socket | H | 1–2 h | T-11 | `chats/consumers.py` | DB calls per message drop by 2 (measured via query counter) |
+| T-15 | `touch_last_seen` at most once per 60 s per socket. **Done (session 034):** Postgres counters per message sent: transactions 16.9 → 14.4, rows updated 4.5 → 2.0; ceiling within run-to-run noise (healthy 2,000, fail 2,500) | H | 1–2 h | T-11 | `chats/consumers.py` | DB calls per message drop by 2 (measured via query counter) |
 | T-16 | Async presence (`redis.asyncio`) | M | 3–5 h | T-11 | `chats/presence.py`, `chats/consumers.py`, `accounts/serializers.py` | No `sync_to_async(presence…)` left on the WS path; same behaviour in tests |
 | T-17 | Chat list rewrite + partial index (Decision 2.3) | H | 4–8 h | T-11 (unread tests), T-12 (`EXPLAIN` baseline) | `chats/views.py`, `chats/models.py`, migration (concurrent) | Count query without GROUP BY; identical results; heavy-user `EXPLAIN` buffers ↓ |
 | T-18 | Cursor pagination for history (expand/contract) | M | 4–6 h | T-09 | `chats/views.py`, `assets/app.js` | Deep page latency flat; no duplicates/gaps in test |
