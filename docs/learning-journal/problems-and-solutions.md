@@ -603,3 +603,16 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   fast that run was, and interleave runs (A-B-A-B) before claiming a ceiling moved.
 - **Lesson:** near the ceiling, a single before/after pair can't show a 250-user difference.
 
+
+## P-38 · `CONN_HEALTH_CHECKS` still failed with a pool full of dead connections
+
+- **Session:** [035](sessions/035-dead-pooled-connections.md)
+- **Observed:** after `docker compose restart db`, `/readyz` answered `503 503 503` before recovering (`main`,
+  `35eb53a`). The suggested fix, `CONN_HEALTH_CHECKS = True`, made a test with 3 dead connections pass after 2.9 s,
+  but with 10 dead ones (a full pool) the request still failed: `couldn't get a connection after 5.00 sec`.
+- **Root cause (Confirmed, from psycopg_pool's source and the timings):** a pooled connection is only found dead when
+  it's used. With a check, the pool tests one connection per try and waits 0 s, ~1 s, ~2 s, ~4 s between tries; ten
+  dead ones need longer than our 5 s `timeout`.
+- **Fix:** our own `check` (`root/db.py`): on the first dead connection, `pool.check()` tests all idle ones at once
+  and replaces the dead ones. A full pool of dead connections now recovers in ~18 ms.
+- **Lesson:** test the worst case of a fix (a *full* pool), not just the case that's easy to set up.

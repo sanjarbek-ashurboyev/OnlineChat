@@ -155,6 +155,8 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
   Our Redis came back unpublished after a stop/start while another Redis held the port. → [P-28](docs/learning-journal/problems-and-solutions.md#p-28--dockers-redis-came-back-without-its-port)
 - **"Connection refused" on 5432/6379 and `docker compose ps` can't reach the daemon: Docker Desktop isn't running**
   (it stops after a restart). `open -a Docker`, then wait for both services to be healthy (session 025).
+- **A connection pool hands out dead connections after Postgres restarts, and `CONN_HEALTH_CHECKS` alone isn't enough**:
+  the pool's default check timed out with 10 dead ones. Our check drops them all (`root/db.py`). → [P-38](docs/learning-journal/problems-and-solutions.md#p-38--conn_health_checks-still-failed-with-a-pool-full-of-dead-connections)
 - **Port 5432 on this Mac belongs to a Homebrew Postgres 14**, not the Docker one, and it's too old for Django 6.1.
   Stop it (`brew services stop postgresql@14`) or map Docker to another port. → [P-04](docs/learning-journal/problems-and-solutions.md#p-04--makemigrations---check-warned-it-couldnt-connect-to-postgres)
 

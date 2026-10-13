@@ -1,6 +1,6 @@
 # Progress
 
-*Updated: 2026-10-13 (session 034).*
+*Updated: 2026-10-13 (session 035).*
 
 **Status words:** **Done** = code written, tests or checks run and passing, committed.
 **Partial** = some of the acceptance criteria are met. **Blocked** = waiting on something outside
@@ -51,6 +51,7 @@ were already fixed on `main` before this journal started.
 | T-13 Connection pool (psycopg 3, PERF-2): `OPTIONS['pool']` 2/10/5 s | **Done** on `t-13-db-pool` (stacked on #41) | Pool test failed first (20 connections for 20 calls); one DB call p95 7.6 → 0.67 ms; load test same Mac, same day: healthy at **500 → 2,000+** (2,000: msg p95 86 ms, p99 374 ms); Postgres sessions per run 33,566 → 227; `make test` 163 OK (16 skipped); real Postgres + Redis with browser tests required 198 OK; Ruff clean | [session 032](sessions/032-t13-connection-pool.md) |
 | Channel layer waits for a Redis connection (T-02 follow-up, `chats/layers.py`, `BlockingConnectionPool` 100 / 5 s) | **Done** on `t-02-redis-pool-wait` | Burst test failed first (`MaxConnectionsError`); load test to 3,000 (3,000 seeded): `group_discard` errors 1,214 → 0, ceiling unchanged (healthy 2,000, fail 2,500); 3,000-socket burst: dead group entries 2,881 → 0, clean in ~3 s; `make test` 164 OK (17 skipped); real stack 199 OK; Ruff clean | [session 033](sessions/033-redis-pool-waits.md) |
 | T-15 `last_seen` at most once per 60 s per socket (PERF-3) | **Done** on `t-15-last-seen-interval`, PR open | Tests: 1 failure + 1 error on the old consumer, then pass; Postgres counters per message sent: transactions 16.9 → 14.4, rows updated 4.5 → 2.0; ceiling unchanged within noise (healthy 2,000, fail 2,500; P-37); `make test` 167 OK (17 skipped); real stack 202 OK; Ruff clean | [session 034](sessions/034-t15-last-seen-interval.md) |
+| Codex review of #38–#43: the pool no longer hands out dead connections after a Postgres restart (our pool `check`, [decision 015](decisions/015-check-pooled-connections.md)) | **Done** on `t-13-conn-health-checks`, PR open | Reproduced on `main` (dead connection error; Daphne `/readyz` 503 ×3 after `docker compose restart db`); `CONN_HEALTH_CHECKS` alone timed out with 10 dead (P-38); fix: 10 dead → ~18 ms, `/readyz` 200 throughout; check costs +0.6–0.8 ms p95 per call; `make test` 203 OK (18 skipped); real stack 203 OK; Ruff clean | [session 035](sessions/035-dead-pooled-connections.md) |
 
 Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), and 50/50 tests pass locally.
 
@@ -121,6 +122,7 @@ That's self-reported; nothing has been tested yet, so every concept starts at
 | File uploads, storage, signals, `on_commit` | [guide](concepts/file-uploads-and-storage.md) | Explained | Session 024 | Upload a photo in the app, then replace it. Before you look, predict what `ls media/avatars` shows; then check. Then upload a 3 MB photo and read the 400. |
 | API contracts, OpenAPI, drf-spectacular | [guide](concepts/api-contracts-and-openapi.md) | Explained | Session 025 | Open `/api/schema/swagger-ui/`, press Authorize, paste an access token, and call `GET /api/v1/chats/`. Then remove `-> bool` from `get_is_online`, predict which test fails, run `make test`, and put it back. |
 | Health checks: liveness vs readiness | [guide](concepts/health-checks.md) | Explained | Session 031 | Start the app (`make up`, then `daphne -p 8002 root.asgi:application`), `curl -i localhost:8002/readyz`. Predict the answer with `REDIS_PORT=6390`, then check. Then explain why a 503 shouldn't restart the process. |
+| Connection pools, dead connections, checkout checks | [guide](concepts/connection-pools.md) | Explained | Sessions 032, 035 | With the app running (`daphne -p 8002 root.asgi:application`), `curl` `/readyz` a few times, run `docker compose restart db`, `curl` again. Predict the answers first. Then set `'check': None` in the pool options, repeat, and explain the difference. |
 
 Mark a row *Practiced* yourself after doing its exercise. It becomes *Demonstrated* when you
 explain or apply the concept without help, for example by answering a session's review
