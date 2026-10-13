@@ -121,6 +121,11 @@ DATABASES = {
           'PASSWORD': os.environ['DB_PASSWORD'],
           'HOST': os.environ.get('DB_HOST', 'localhost'),
           'PORT': os.environ.get('DB_PORT', '5432'),
+          # T-13 (PERF-2): reuse connections. Opening one took ~6.8 ms, the query itself under 1 ms, and channels
+          # closes the connection after every socket call. With the pool, "close" hands it back instead.
+          # CONN_MAX_AGE must stay 0. max_size per process; keep the sum over processes well under
+          # Postgres's max_connections (100). timeout: wait at most 5 s for a free connection, then fail.
+          'OPTIONS': {'pool': {'min_size': 2, 'max_size': 10, 'timeout': 5}},
       }
 }
 

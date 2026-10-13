@@ -438,6 +438,9 @@ flowchart LR
       and slow queries. Total across processes must stay below `max_connections` minus a
       reserve for admin/migrations (~10).
     - `timeout: 5`: if no connection frees up within 5 s, fail fast (503) instead of piling up.
+11. **Result (2026-10-13, session 032):** with these values, one DB call as the socket makes it: p95 7.6 → 0.67 ms.
+    One Daphne process, realistic profile, same Mac: healthy at 500 → at least 2,000 (message p95 86 ms, p99 374 ms).
+    New Postgres sessions per run: 33,566 → 227. The pool was full (10) from about 1,000 sockets, without timeouts.
     - **Verify:** the same load test before and after. Expect DB time per call to drop from
       ~6.5 ms to well under 1 ms. Write down the measured number; don't predict it.
 11. **New problems:**
