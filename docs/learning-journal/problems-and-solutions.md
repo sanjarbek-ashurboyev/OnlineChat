@@ -308,7 +308,7 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   p95 of 366 ms. Running the **same** 300-user step from the server Mac itself (no network in between) gave
   message p95 **90 ms** and ping p95 **44 ms**, a pass, even though the generator then competed with the server for CPU.
 - **Fix:** none in code. The result is recorded as network-limited, and the server's own ceiling was measured
-  separately (healthy at 750, cliff at 1,000).
+  separately (healthy at 750, cliff at 1,000; with the fixed tester in session 028: healthy at 500, failing at 750).
 - **Lesson:** "run the generator on another machine" assumes a good network between them. Measure the network,
   or compare with a local run, before blaming the server.
 
@@ -543,7 +543,7 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
 
 ## P-34 · A late answer acted for the wrong account, sent twice, or left a gap
 
-- **Session:** [026](sessions/026-session-replay-and-recovery.md)
+- **Session:** [027](sessions/027-session-replay-and-recovery.md)
 - **Observed:** four gaps Codex reproduced at `1abe93c`, each now a failing-first test:
   - a 401 for account A's profile update, arriving after B signed in, was refreshed with B's token and sent again
     (the server got the request twice, the second time as B);
