@@ -83,7 +83,7 @@ make tests fast and independent, but they can drift from the real thing. The rea
 - **Controlling time** (session 021): `page.clock.install()` before loading the page fakes its timers;
   `page.clock.fast_forward(11_000)` runs everything due in the next 11 s at once. A 10 s timeout tests in milliseconds.
 - **Waiting:** `expect(locator).to_have_count(50)` retries until it's true (5 s at most). Don't sleep and hope.
-- **Controlling *when* the server answered** (session 026): `route.fetch()` sends a held request to the server now
+- **Controlling *when* the server answered** (session 027): `route.fetch()` sends a held request to the server now
   and returns its answer; `route.fulfill(response=answer)` gives it to the page later. The page then sees a
   snapshot taken *before* things the test does in between.
 - **Run locally:** `docker compose up -d`, `playwright install chromium`, then `python manage.py test chats.test_browser`.

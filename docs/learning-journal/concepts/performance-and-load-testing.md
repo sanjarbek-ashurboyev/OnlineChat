@@ -52,8 +52,10 @@ than they drain. Waiting time grows roughly like `busy / (1 - busy)`: 0.4/0.6 â‰
     not the server (see the "confounders" mistake below).
   - From the same Mac: healthy up to **750**, and a cliff at **1,000** (message p95 6.4 s), while the chat
     list (REST) stayed at 39 ms and Daphne used only ~55% of one core. That's the PERF-1 single-thread queue.
-  - **Unconfirmed:** those verdicts came from the old tester, with looser limits (500 ms, 1%) and the bugs in
-    P-23. They need a rerun with the fixed tester (session 017).
+  - Those verdicts came from the old tester, with looser limits (500 ms, 1%) and the bugs in P-23.
+- **Baseline rerun (session 028), fixed tester and the plan's limits, same Mac, at `77722d8`:** healthy at **500**
+  (message p95 267 ms), failing at **750** (p95 2.3 s), and at 1,250 about a quarter of the messages got no echo.
+  The chat list stayed under 50 ms throughout. This is the Stage 1 starting point.
 - **Mechanism** ([audit PERF-1â€¦4](../../scaling/01-audit.md#15-confirmed-findings-performance)):
   1. `database_sync_to_async` sends all of a process's ORM calls to **one thread**.
   2. `CONN_MAX_AGE=0` means a new Postgres connection for every call.

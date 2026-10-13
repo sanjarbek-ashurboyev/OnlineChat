@@ -1,4 +1,4 @@
-# 026 · Four gaps Codex reproduced: replay after logout, double send, catch-up gap, load-test receipts
+# 027 · Four gaps Codex reproduced: replay after logout, double send, catch-up gap, load-test receipts
 
 - **Date:** 2026-10-12 · **Phase:** Stage 0
 - **Task:** four findings Codex reproduced at `1abe93c` (not part of the audit checklist) · **Branch:**

@@ -69,7 +69,7 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
 - **After an `await` in `app.js`, the user may even have signed out.** `api()` drops answers from an earlier
   session (`state.session`); new async code must go through it or check the session itself. → [P-29](docs/learning-journal/problems-and-solutions.md#p-29--logout-didnt-stop-the-previous-sessions-work)
   Check it **before** acting on an answer (a refresh, a retry), not only before using it. → [P-34](docs/learning-journal/problems-and-solutions.md#p-34--a-late-answer-acted-for-the-wrong-account-sent-twice-or-left-a-gap)
-- **A load-test verdict ignores `server_errors`.** 169 error frames still gave "OK" (session 026). Read that column.
+- **A load-test verdict ignores `server_errors`.** 169 error frames still gave "OK" (session 027). Read that column.
 - **After an `await` in `app.js`, the user may have moved on.** Check the answer still belongs to what's on screen
   before drawing it. → [P-21](docs/learning-journal/problems-and-solutions.md#p-21--four-frontend-bugs-with-no-tests-to-catch-them)
 - **In a `subTest` loop, keep every assertion of a case inside its `with self.subTest(...)`.** One outside it ends
