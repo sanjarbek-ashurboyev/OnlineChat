@@ -47,8 +47,7 @@ with a REST API for chat history.
 | `POST /api/v1/auth/register/` | Create an account |
 | `POST /api/v1/auth/login/` · `/auth/token/refresh/` | Get and refresh JWT tokens |
 | `GET/PATCH /api/v1/auth/profile/` | Your profile and avatar |
-| `GET /api/v1/users/lookup/?phone_number=` | Find a user by phone number |
-| `GET/POST /api/v1/chats/` | List your chats or start a new one |
+| `GET/POST /api/v1/chats/` | List your chats, or start one with `{"phone_number": "..."}` |
 | `GET/POST /api/v1/chats/<id>/messages/` | Message history (paginated) or send a message |
 | `POST /api/v1/chats/<id>/read/` | Mark a chat as read |
 | `WS /ws/inbox/?token=<access token>` | Live messages, read receipts and presence |
@@ -75,7 +74,7 @@ Open http://127.0.0.1:8000/ in two browsers, register two users, and chat betwee
 
 ## Tests
 
-48 tests cover registration, login and the phone-number lookup (including its rate limit
+48 tests cover registration, login, starting a chat by phone number (including its rate limit
 and blocking), the chat and message REST API, and the WebSocket itself. The WebSocket tests
 connect through the full ASGI stack (origin check, JWT middleware, router, consumer) and
 check that messages reach both participants and nobody else, that outsiders, blocked users

@@ -75,14 +75,6 @@ class ProfileSerializer(ModelSerializer):
         return value
 
 
-class UserLookupSerializer(ModelSerializer):
-    display_name = CharField(source='first_name', read_only=True)
-
-    class Meta:
-        model = User
-        fields = ['id', 'display_name', 'avatar']
-
-
 class PublicUserSerializer(ModelSerializer):
     display_name = CharField(source='first_name', read_only=True)
     is_online = SerializerMethodField()

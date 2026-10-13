@@ -16,7 +16,7 @@ DATABASES = {'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': ':memor
 # Messages, read receipts and presence pings go through this; it needs no Redis.
 CHANNEL_LAYERS = {'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'}}
 
-# The lookup throttle counts requests in the cache.
+# Throttles count requests in the cache.
 CACHES = {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}}
 
 # The WebSocket origin check compares against this.

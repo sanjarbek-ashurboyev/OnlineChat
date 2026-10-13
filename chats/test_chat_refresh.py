@@ -37,7 +37,7 @@ class ChatRefreshFilterTests(FakePresenceMixin, TestCase):
 
     def test_creation_ignores_the_get_only_refresh_filter(self):
         response = self.client.post(f'/api/v1/chats/?chat_id={self.chat.pk}',
-                                    {'participant_id': self.other.pk}, format='json')
+                                    {'phone_number': str(self.other.phone_number)}, format='json')
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data['participant']['id'], self.other.pk)
 

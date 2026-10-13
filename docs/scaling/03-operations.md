@@ -96,6 +96,7 @@ says which test proves the mitigation works.
 - **Acceptance:** none of the abuse tests crash the consumer.
 
 **T-05 · Who can start a chat; enumeration-safe responses** · H · 1–3 h + **product decision** · Next? yes
+- **Status (2026-10-13): done, option (b)** ([decision 013](../learning-journal/decisions/013-start-a-chat-by-phone-number.md), session 029). `POST /chats/` takes `phone_number`; `/users/lookup/` removed; `chat_create` 20/hour; missing and blocked both 404.
 - **Options:**
   - (a) Keep "anyone by id", but throttle (T-03).
   - (b) Chat creation requires the phone number (merge lookup + create into one throttled endpoint).

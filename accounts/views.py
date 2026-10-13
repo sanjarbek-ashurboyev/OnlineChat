@@ -1,7 +1,4 @@
-from django.shortcuts import get_object_or_404
-from drf_spectacular.utils import OpenApiParameter, extend_schema
-from phonenumber_field.phonenumber import to_python
-from rest_framework.exceptions import ValidationError
+from drf_spectacular.utils import extend_schema
 from rest_framework.generics import (
     CreateAPIView,
     RetrieveAPIView,
@@ -15,7 +12,6 @@ from accounts.serializers import (
     ProfileSerializer,
     PublicUserSerializer,
     RegisterSerializer,
-    UserLookupSerializer,
 )
 from accounts.throttles import (
     LoginIPThrottle,
@@ -50,36 +46,6 @@ class ProfileAPIView(RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user
-
-
-@extend_schema(
-    tags=['users'],
-    parameters=[
-        OpenApiParameter('phone_number', str, required=True,
-                         description='E.164 or local UZ format.'),
-    ],
-)
-class UserLookupAPIView(RetrieveAPIView):
-    serializer_class = UserLookupSerializer
-    permission_classes = [IsAuthenticated]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = 'user_lookup'
-
-    def get_object(self):
-        raw = self.request.query_params.get('phone_number')
-        if not raw:
-            raise ValidationError({'phone_number': 'This query parameter is required.'})
-
-        number = to_python(raw, region='UZ')
-        if not number or not number.is_valid():
-            raise ValidationError({'phone_number': 'Enter a valid phone number.'})
-
-        queryset = (
-            User.objects
-            .exclude(pk=self.request.user.pk)
-            .exclude(blocks_made__blocked=self.request.user)
-        )
-        return get_object_or_404(queryset, phone_number=number)
 
 
 @extend_schema(tags=['users'])
