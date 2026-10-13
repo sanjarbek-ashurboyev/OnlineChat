@@ -18,6 +18,7 @@ choose differently. If new evidence changes a decision, update the file and say 
 | [011](011-delete-avatar-files-after-commit.md) | Delete old avatar files with our own signals, after the commit | Accepted | [024](../sessions/024-privacy-and-uploads.md) |
 | [012](012-required-browser-tests.md) | CI requires the browser tests; elsewhere they may skip | Accepted | [025](../sessions/025-api-contract-and-browser-skips.md) |
 | [013](013-start-a-chat-by-phone-number.md) | A chat starts from a phone number, not a user id | Accepted | [029](../sessions/029-t05-chat-by-phone.md) |
+| [014](014-refresh-rotation-and-logout.md) | Refresh tokens rotate; logout blacklists; tabs share renewals | Accepted | [030](../sessions/030-t07-refresh-rotation-and-logout.md) |
 
 The bigger scaling decisions are in the plan, [docs/scaling/02-plan.md](../../scaling/02-plan.md):
 - **Stage 0:** 0.1 where secrets live, 0.2 rate limiting, 0.3 making live delivery recoverable.

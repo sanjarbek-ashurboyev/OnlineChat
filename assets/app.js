@@ -34,6 +34,7 @@ const state = {
   catchUpDue: false,      // a catch-up was asked for while the history loaded; run it once it's in
   seenIds: new Set(),
   session: 0,             // bumped by logout; answers for an earlier session are dropped (Codex audit H-04)
+  renewal: null,          // the token refresh in flight, shared by everyone who needs it (T-07)
   reconnectTimer: null,
   ackTimer: null,
   startTimer: null,
@@ -61,17 +62,48 @@ function clearTokens() {
   localStorage.removeItem('refresh');
 }
 
+/** The user id inside a token. Not verified: only used to compare two tokens we already hold. */
+function tokenUser(token) {
+  try {
+    return JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).user_id;
+  } catch {
+    return null;
+  }
+}
+
 /** true: renewed. false: the server refused the refresh token, so sign in again.
- *  Throws on a network or server error, which is no reason to sign out (Codex audit M-12). */
-async function refreshAccess() {
+ *  Throws on a network or server error, which is no reason to sign out (Codex audit M-12).
+ *  A refresh token works once (T-07), so callers share one renewal instead of each spending it. */
+function refreshAccess() {
+  if (!state.renewal) {
+    const renewal = renewTokens().finally(() => {
+      if (state.renewal === renewal) state.renewal = null;
+    });
+    state.renewal = renewal;
+  }
+  return state.renewal;
+}
+
+async function renewTokens() {
   if (!state.refresh) return false;
   const session = state.session;
+  const sent = state.refresh;
   const res = await fetch(`${API}/auth/token/refresh/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh: state.refresh }),
+    body: JSON.stringify({ refresh: sent }),
   });
-  if (res.status === 400 || res.status === 401) return session === state.session ? false : dropped();
+  if (res.status === 400 || res.status === 401) {
+    if (session !== state.session) return dropped();
+    // Another tab of the same account may have renewed first, which retired our token. It saved the new
+    // one; use it. Never another account's: that would sign this tab in as someone else.
+    const stored = localStorage.getItem('refresh');
+    if (stored && stored !== sent && tokenUser(stored) === tokenUser(sent)) {
+      state.refresh = stored;
+      return renewTokens();
+    }
+    return false;
+  }
   if (!res.ok) throw Object.assign(new Error('refresh failed'), { status: res.status });
   const data = await res.json();
   // Signed out meanwhile: these tokens must not sign anyone back in.
@@ -743,9 +775,20 @@ function renderMe() {
 }
 
 function logout() {
+  // End this login on the server too (T-07). Not awaited: signing out must work offline, and the
+  // answer changes nothing here.
+  if (state.refresh) {
+    fetch(`${API}/auth/logout/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh: state.refresh }),
+      keepalive: true,
+    }).catch(() => {});
+  }
   // Nothing from this session may touch the next one (Codex audit H-04): requests and token
   // refreshes still in flight are dropped, and the socket's handlers and timers are gone.
   state.session += 1;
+  state.renewal = null;
   closeSocket();
   clearTimeout(state.startTimer);
   settleSend();
