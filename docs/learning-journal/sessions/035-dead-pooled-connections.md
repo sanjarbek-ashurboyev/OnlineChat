@@ -30,7 +30,7 @@
 7. **Recovery time with the fix**, 10 dead connections: about **18 ms** for the first query (the probe's query
    sleeps 200 ms; the whole call took 218 ms).
 8. **Overhead re-measured** (see Results).
-9. **Results:** `make test` **203 run, OK (skipped=18)**; real Postgres + Redis with `REQUIRE_BROWSER_TESTS=True`
+9. **Results:** `make test` **168 run, OK (skipped=18)** (203 found; a skipped browser class counts once); real Postgres + Redis with `REQUIRE_BROWSER_TESTS=True`
    **203 OK**; Ruff 0.16.10 clean.
 
 **Not done:** no load test. The check's cost was measured directly (below); near the ceiling a load test can't see a
