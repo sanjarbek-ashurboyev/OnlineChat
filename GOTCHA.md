@@ -116,6 +116,9 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
 
 ## Load testing
 
+- **Give the server time to finish before checking what it left behind.** Stopping Daphne right after the tester
+  exits cut 3,000 disconnects short, and Redis looked full of leftovers the app never left. → [P-36](docs/learning-journal/problems-and-solutions.md#p-36--thousands-of-leftovers-in-redis-that-the-app-never-left)
+
 - **Fake data must carry a marker real data *can't* have** (seed users use the invalid `+998000` range), and a
   "replace" must check its arguments first and delete inside the same transaction. → [P-24](docs/learning-journal/problems-and-solutions.md#p-24--the-load-test-seed-command-could-delete-real-accounts)
 
@@ -142,7 +145,7 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
 - **A load test also measures the network.** Over an iPhone hotspot, ping p95 was 366 ms at 100 users, and the "server"
   failed at 300. From the server machine itself it passed with 90 ms. Compare before blaming the server. → [P-19](docs/learning-journal/problems-and-solutions.md#p-19--the-second-machine-baseline-measured-the-hotspot-not-the-server)
 - **"Too many connections" can be a client-side pool limit.** redis-py's pool allows 100 per process and raises
-  instead of waiting. Read the library before tuning the server.
+  instead of waiting. Read the library before tuning the server. Our channel layer now waits (`chats/layers.py`, session 033).
 - **Check what serves port 6379 before trusting a Redis result** (`lsof -nP -iTCP:6379 -sTCP:LISTEN`). A Homebrew
   Redis used to take it, and `docker compose stop redis` then didn't take the app's Redis down. To test an outage,
   point `REDIS_PORT` at a free port instead. → [P-26](docs/learning-journal/problems-and-solutions.md#p-26--stopping-dockers-redis-didnt-stop-the-apps-redis)

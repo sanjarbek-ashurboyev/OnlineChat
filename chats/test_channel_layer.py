@@ -19,3 +19,12 @@ class RedisChannelLayerTests(SimpleTestCase):
         channel = await self.layer.new_channel()
         with self.assertRaises(asyncio.TimeoutError, msg='our own wait ends it, not a Redis error'):
             await asyncio.wait_for(self.layer.receive(channel), timeout=self.layer.brpop_timeout + 2)
+
+    async def test_a_burst_of_group_changes_waits_for_a_free_connection(self):
+        # 2,000 sockets closing at once run 2,000 group_discards together. redis-py's pool holds 100 connections
+        # and raised MaxConnectionsError for the rest instead of waiting: 289 errors at the end of a 2,000-user
+        # load test (session 032). Each call must get a connection, even if it has to wait for one.
+        group = 'burst-test'
+        channels = [await self.layer.new_channel() for _ in range(300)]
+        await asyncio.gather(*(self.layer.group_add(group, channel) for channel in channels))
+        await asyncio.gather(*(self.layer.group_discard(group, channel) for channel in channels))
