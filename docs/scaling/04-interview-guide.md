@@ -14,6 +14,7 @@ far more than an unsupported "it scales to a million users".
 | Load test harness (`loadtest/run.py`, seed command) | Implemented | Ran 2026-10-09 |
 | Single process healthy at 100 online (heavy profile: 50% chatting, 10 msg/min), failing at 200 | **Measured** (same-machine generator, so pessimistic) | `loadtest/results-trial.json` |
 | Single process healthy at 500 online (realistic profile: 20% chatting, 4 msg/min), failing at 750 | **Measured** (server Mac only, so the network isn't in it; same-machine generator) | Session 028, `loadtest/results-baseline-local.json` (not committed) |
+| Connection pool (T-13): one process healthy at 2,000 online, up from 500; DB call p95 7.6 → 0.67 ms | **Measured** (same Mac, before/after the same day) | Session 032 |
 | Root cause: one shared DB thread + 6.2 ms connect per call | **Measured parts** (connect time, library source) + model; profiler confirmation pending (T-12) | 01-audit PERF-1–4 |
 | Chat list runs its aggregate twice | **Measured** (query capture) | 01-audit PERF-5 |
 | Disconnect bug under burst | **Observed** (97 errors) | Server log |

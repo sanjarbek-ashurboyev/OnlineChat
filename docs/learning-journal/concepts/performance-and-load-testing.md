@@ -56,6 +56,9 @@ than they drain. Waiting time grows roughly like `busy / (1 - busy)`: 0.4/0.6 �
 - **Baseline rerun (session 028), fixed tester and the plan's limits, same Mac, at `77722d8`:** healthy at **500**
   (message p95 267 ms), failing at **750** (p95 2.3 s), and at 1,250 about a quarter of the messages got no echo.
   The chat list stayed under 50 ms throughout. This is the Stage 1 starting point.
+- **After the connection pool (T-13, session 032):** one call 6.9 → 0.45 ms (p50); the same test is healthy at
+  **2,000** online (message p95 86 ms), against 500 before, run the same afternoon. Postgres went from 33,566 new
+  sessions per run to 227. That confirmed PERF-2 by changing only the connection handling.
 - **Mechanism** ([audit PERF-1…4](../../scaling/01-audit.md#15-confirmed-findings-performance)):
   1. `database_sync_to_async` sends all of a process's ORM calls to **one thread**.
   2. `CONN_MAX_AGE=0` means a new Postgres connection for every call.
