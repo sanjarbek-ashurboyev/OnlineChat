@@ -5,9 +5,12 @@ from django.urls import include, path
 from django.views.generic import TemplateView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+from root.health import readyz
+
 urlpatterns = [
     path('', TemplateView.as_view(template_name='index.html'), name='app'),
     path('admin/', admin.site.urls),
+    path('readyz', readyz, name='readyz'),
     path('api/v1/', include('accounts.urls')),
     path('api/v1/', include('chats.urls')),
     path("api-auth/", include("rest_framework.urls")),

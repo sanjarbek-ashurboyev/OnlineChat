@@ -560,3 +560,17 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   remembers a skipped catch-up for after the history; the tester sends `up_to` (the message's id).
 - **Lesson:** "after this `await`, is it still the same world?" applies to every step that acts on an answer, not
   only to drawing it. And a protocol change must update every client, the load tester included.
+
+## P-35 · A production-only setting was missing from the local tests
+
+- **Session:** [031](sessions/031-readyz.md)
+- **Observed:** the test "a plain HTTP probe of `/readyz` is not redirected" still got a **301** after
+  `SECURE_REDIRECT_EXEMPT` was added, even though the test turned `SECURE_SSL_REDIRECT` on.
+- **Root cause (Confirmed, by rerunning with `DJANGO_DEBUG=False`: it passed):** the exemption was inside
+  `if not DEBUG:` in `root/settings.py`. `root/settings_test.py` imports `root/settings.py`, which loads `.env`, and the
+  local `.env` sets `DJANGO_DEBUG=True`. So locally the block never ran and the exemption didn't exist. In CI there's
+  no `.env`, DEBUG is off, and the test would have passed: the same test, two results.
+- **Fix:** the exemption moved out of the `if not DEBUG:` block. It's harmless with DEBUG on. The test passes both ways.
+- **Lesson:** local tests and CI don't share `DEBUG`. Put settings a test relies on outside `if not DEBUG:`, or run the
+  test both ways (`DJANGO_DEBUG=False make test`).
+

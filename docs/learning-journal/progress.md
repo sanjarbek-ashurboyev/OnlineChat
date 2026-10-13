@@ -1,6 +1,6 @@
 # Progress
 
-*Updated: 2026-10-13 (session 030).*
+*Updated: 2026-10-13 (session 031).*
 
 **Status words:** **Done** = code written, tests or checks run and passing, committed.
 **Partial** = some of the acceptance criteria are met. **Blocked** = waiting on something outside
@@ -47,6 +47,7 @@ were already fixed on `main` before this journal started.
 | Stage 0 baseline, rerun with the fixed tester (server Mac only; second-machine run dropped) | **Done** (docs on `t-12-stage0-baseline`) | `main` `77722d8`, one Daphne process, plan limits: **healthy at 500** (msg p95 267 ms), **fails at 750** (p95 2.3 s), 242/926 messages without echo at 1,250; chat list < 50 ms at every step | [session 028](sessions/028-stage0-baseline.md) |
 | T-05 Who can start a chat: phone number required, `/users/lookup/` removed, `chat_create` 20/hour, block either way = 404 ([decision 013](decisions/013-start-a-chat-by-phone-number.md)) | **Done** on `t-05-chat-by-phone` (stacked on #38) | New tests: 8 failures + 2 errors on the old code, then pass; `make test` 152 OK (14 skipped); real Postgres + Redis with browser tests required 183 OK; Ruff clean | [session 029](sessions/029-t05-chat-by-phone.md) |
 | T-07 Refresh rotation + server-side logout (SEC-7): each refresh token works once, `POST /auth/logout/` blacklists it; the browser shares one renewal per tab and picks up another tab's (same account only) ([decision 014](decisions/014-refresh-rotation-and-logout.md)) | **Done** on `t-07-refresh-rotation-logout` (stacked on #39) | 4 server tests and 3 browser tests failed first, 2 guards pass; `make test` 157 OK (15 skipped); real Postgres + Redis with browser tests required 192 OK; no missing migrations; Ruff clean | [session 030](sessions/030-t07-refresh-rotation-and-logout.md) |
+| `/readyz` (T-21 part, T-12 step 3): 200 when Postgres and Redis answer, 503 naming the failed one; exempt from the HTTPS redirect | **Done** on `t-21-readyz` (stacked on #40). T-21 itself still *Partial* (outage 5xx rate not measured) | 5 tests failed first; real Daphne in production mode: 200 / 503 (Redis off) / 503 (DB off); `make test` 162 OK (15 skipped); real Postgres + Redis with browser tests required 197 OK; Ruff clean | [session 031](sessions/031-readyz.md) |
 
 Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), and 50/50 tests pass locally.
 
@@ -116,6 +117,7 @@ That's self-reported; nothing has been tested yet, so every concept starts at
 | Testing, CI, test databases, secret scanning | [guide](concepts/testing-and-ci.md) | Explained | Session 007 | Break a test on purpose (change an expected status code), push to a PR branch, and read the CI log to find it. Then explain P-12 in your own words. |
 | File uploads, storage, signals, `on_commit` | [guide](concepts/file-uploads-and-storage.md) | Explained | Session 024 | Upload a photo in the app, then replace it. Before you look, predict what `ls media/avatars` shows; then check. Then upload a 3 MB photo and read the 400. |
 | API contracts, OpenAPI, drf-spectacular | [guide](concepts/api-contracts-and-openapi.md) | Explained | Session 025 | Open `/api/schema/swagger-ui/`, press Authorize, paste an access token, and call `GET /api/v1/chats/`. Then remove `-> bool` from `get_is_online`, predict which test fails, run `make test`, and put it back. |
+| Health checks: liveness vs readiness | [guide](concepts/health-checks.md) | Explained | Session 031 | Start the app (`make up`, then `daphne -p 8002 root.asgi:application`), `curl -i localhost:8002/readyz`. Predict the answer with `REDIS_PORT=6390`, then check. Then explain why a 503 shouldn't restart the process. |
 
 Mark a row *Practiced* yourself after doing its exercise. It becomes *Demonstrated* when you
 explain or apply the concept without help, for example by answering a session's review
