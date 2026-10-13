@@ -8,6 +8,7 @@ from channels.db import database_sync_to_async
 from channels.layers import get_channel_layer
 from channels.testing import WebsocketCommunicator
 from django.test import TransactionTestCase
+from django.utils import timezone
 from redis.exceptions import MaxConnectionsError
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -144,6 +145,52 @@ class ConnectionTests(InboxSocketTestCase):
         self.assertFalse(self.online(self.alice))
         await self.alice.arefresh_from_db()
         self.assertIsNotNone(self.alice.last_seen)
+
+
+class LastSeenTests(InboxSocketTestCase):
+    """T-15 (PERF-3): frames write last_seen at most once per LAST_SEEN_INTERVAL per socket, not on every frame.
+    Connecting and disconnecting still always write it: that's the "last seen" others are shown."""
+
+    LONG_AGO = timezone.now() - timedelta(hours=1)
+
+    async def make_it_old(self):
+        await User.objects.filter(pk=self.alice.pk).aupdate(last_seen=self.LONG_AGO)
+
+    async def last_seen(self):
+        await self.alice.arefresh_from_db()
+        return self.alice.last_seen
+
+    async def ping(self, socket):
+        await socket.send_json_to({'action': 'ping'})
+        self.assertEqual(await socket.receive_json_from(), {'type': 'pong'})
+
+    async def test_pings_and_messages_within_the_interval_do_not_write_last_seen(self):
+        socket = await self.open(self.alice)
+        await self.make_it_old()
+        for _ in range(3):
+            await self.ping(socket)
+        await socket.send_json_to({'chat_id': self.chat.id, 'text': 'hi'})
+        self.assertEqual((await socket.receive_json_from())['type'], 'message')
+
+        self.assertEqual(await self.last_seen(), self.LONG_AGO)
+        await self.close_all()
+
+    async def test_a_frame_after_the_interval_writes_last_seen(self):
+        with mock.patch.object(consumers, 'LAST_SEEN_INTERVAL', 0):
+            socket = await self.open(self.alice)
+            await self.make_it_old()
+            await self.ping(socket)
+            self.assertGreater(await self.last_seen(), self.LONG_AGO)
+            await self.close_all()
+
+    async def test_connecting_and_disconnecting_still_write_last_seen(self):
+        await self.make_it_old()
+        await self.open(self.alice)
+        self.assertGreater(await self.last_seen(), self.LONG_AGO, 'connect')
+
+        await self.make_it_old()
+        await self.close_all()
+        self.assertGreater(await self.last_seen(), self.LONG_AGO, 'disconnect')
 
 
 class MessagingTests(InboxSocketTestCase):

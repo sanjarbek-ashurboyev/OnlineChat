@@ -62,6 +62,10 @@ than they drain. Waiting time grows roughly like `busy / (1 - busy)`: 0.4/0.6 �
 - **The ceiling with 3,000 seeded users (session 033):** one process healthy at 2,000, failing at 2,500 (message p95
   403–528 ms), losing messages at 3,000. The waiting Redis pool removed the end-of-test errors but, as expected,
   didn't move this.
+- **T-15 (session 034):** `last_seen` once a minute per socket: rows updated per run −55%, transactions −15%.
+  The ceiling stayed within run-to-run noise (the same code was healthy at 2,000 in one run and failed at 1,750 in
+  the next, [P-37](../problems-and-solutions.md#p-37--the-same-code-was-healthy-at-2000-in-one-run-and-failed-at-1750-in-the-next)),
+  but past it the server degraded far more gently (3,000 users: 12 lost messages instead of 40–1,498).
 - **Mechanism** ([audit PERF-1…4](../../scaling/01-audit.md#15-confirmed-findings-performance)):
   1. `database_sync_to_async` sends all of a process's ORM calls to **one thread**.
   2. `CONN_MAX_AGE=0` means a new Postgres connection for every call.

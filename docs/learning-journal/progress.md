@@ -1,6 +1,6 @@
 # Progress
 
-*Updated: 2026-10-13 (session 033).*
+*Updated: 2026-10-13 (session 034).*
 
 **Status words:** **Done** = code written, tests or checks run and passing, committed.
 **Partial** = some of the acceptance criteria are met. **Blocked** = waiting on something outside
@@ -50,6 +50,7 @@ were already fixed on `main` before this journal started.
 | `/readyz` (T-21 part, T-12 step 3): 200 when Postgres and Redis answer, 503 naming the failed one; exempt from the HTTPS redirect | **Done** on `t-21-readyz` (stacked on #40). T-21 itself still *Partial* (outage 5xx rate not measured) | 5 tests failed first; real Daphne in production mode: 200 / 503 (Redis off) / 503 (DB off); `make test` 162 OK (15 skipped); real Postgres + Redis with browser tests required 197 OK; Ruff clean | [session 031](sessions/031-readyz.md) |
 | T-13 Connection pool (psycopg 3, PERF-2): `OPTIONS['pool']` 2/10/5 s | **Done** on `t-13-db-pool` (stacked on #41) | Pool test failed first (20 connections for 20 calls); one DB call p95 7.6 → 0.67 ms; load test same Mac, same day: healthy at **500 → 2,000+** (2,000: msg p95 86 ms, p99 374 ms); Postgres sessions per run 33,566 → 227; `make test` 163 OK (16 skipped); real Postgres + Redis with browser tests required 198 OK; Ruff clean | [session 032](sessions/032-t13-connection-pool.md) |
 | Channel layer waits for a Redis connection (T-02 follow-up, `chats/layers.py`, `BlockingConnectionPool` 100 / 5 s) | **Done** on `t-02-redis-pool-wait` | Burst test failed first (`MaxConnectionsError`); load test to 3,000 (3,000 seeded): `group_discard` errors 1,214 → 0, ceiling unchanged (healthy 2,000, fail 2,500); 3,000-socket burst: dead group entries 2,881 → 0, clean in ~3 s; `make test` 164 OK (17 skipped); real stack 199 OK; Ruff clean | [session 033](sessions/033-redis-pool-waits.md) |
+| T-15 `last_seen` at most once per 60 s per socket (PERF-3) | **Done** on `t-15-last-seen-interval`, PR open | Tests: 1 failure + 1 error on the old consumer, then pass; Postgres counters per message sent: transactions 16.9 → 14.4, rows updated 4.5 → 2.0; ceiling unchanged within noise (healthy 2,000, fail 2,500; P-37); `make test` 167 OK (17 skipped); real stack 202 OK; Ruff clean | [session 034](sessions/034-t15-last-seen-interval.md) |
 
 Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), and 50/50 tests pass locally.
 
@@ -75,7 +76,7 @@ See the [audit](../scaling/01-audit.md) and its status update. The most importan
 - **Codex audit 2** ([checklist](../scaling/05-codex-audit-2026-10-11.md)): 31 findings + 7 risks; 4 fixed in session 018, 5 in 019, 4 in 020, 4 in 021, 4 in 022, 4 in 023, 4 in 024, 2 in 025: all 31 findings fixed. Left: the risks R-01…R-07. Four later Codex gaps fixed in session 027.
 - **Load-test verdict ignores `server_errors`** (session 027): 169 error frames still gave OK. The load-tester tests also skip in CI (no `aiohttp` there). The reverse proxy must cap request bodies (session 024). The load tester should reconnect at token expiry now that browsers do (decision 006).
 - **Codex review #9** (REST read receipts) fixed in session 022 (M-07). #7 (24 h group expiry) fixed in session 020 (M-02). #8 (load tester) fixed in session 017; the baseline was rerun in session 028 (healthy at 500, failing at 750).
-- **PERF-1/2/3:** one DB thread per process (open), a new DB connection per call (**fixed by T-13**, session 032), seven DB trips per message (T-15, open).
+- **PERF-1/2/3:** one DB thread per process (open), a new DB connection per call (**fixed by T-13**, session 032), seven DB trips per message (one fewer per frame since T-15, session 034).
 - Dependabot backlog cleared: #8–#11 merged; #12 and #13 replaced by #16 ([P-14](problems-and-solutions.md#p-14--dependabot-prs-that-could-never-be-merged)).
   Auto-merge is on: for new Dependabot PRs, comment `@dependabot rebase`, then enable auto-merge.
 

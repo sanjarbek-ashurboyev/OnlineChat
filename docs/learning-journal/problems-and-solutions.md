@@ -590,3 +590,16 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
 - **Lesson:** "check the state after the test" needs the server to have *finished* the test. And it's a real deploy
   concern too: stopping a process mid-burst skips cleanup (T-27, graceful WebSocket shutdown).
 
+## P-37 · The same code was healthy at 2,000 in one run and failed at 1,750 in the next
+
+- **Session:** [034](sessions/034-t15-last-seen-interval.md)
+- **Observed:** one Daphne process, same steps, same 3,000-user seed. `54831d1` (session 033): healthy at 2,000.
+  An hour later `fba1bbc` (the same code plus docs): message p95 416 ms at 1,750, a fail, and 500 failed connects at 3,000.
+- **Ruled out (Confirmed):** database bloat. `pg_stat_user_tables` showed autovacuum current and at most 642 dead rows,
+  after six reseeds.
+- **Root cause (Hypothesis):** the Mac itself. The tester runs on it too, near its own limits at 2,000+ sockets, plus
+  whatever else is running. Not measured.
+- **Fix:** none in the app. In the method: compare Postgres's counters (work per message), which don't depend on how
+  fast that run was, and interleave runs (A-B-A-B) before claiming a ceiling moved.
+- **Lesson:** near the ceiling, a single before/after pair can't show a 250-user difference.
+

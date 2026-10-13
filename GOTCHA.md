@@ -116,6 +116,8 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
 
 ## Load testing
 
+- **Near the ceiling one run proves little.** The same code was healthy at 2,000 in one run and failed at 1,750 in the
+  next. Compare Postgres's counters, and interleave before/after runs. → [P-37](docs/learning-journal/problems-and-solutions.md#p-37--the-same-code-was-healthy-at-2000-in-one-run-and-failed-at-1750-in-the-next)
 - **Give the server time to finish before checking what it left behind.** Stopping Daphne right after the tester
   exits cut 3,000 disconnects short, and Redis looked full of leftovers the app never left. → [P-36](docs/learning-journal/problems-and-solutions.md#p-36--thousands-of-leftovers-in-redis-that-the-app-never-left)
 
