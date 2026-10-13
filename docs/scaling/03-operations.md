@@ -159,7 +159,7 @@ says which test proves the mitigation works.
 - **Steps:**
   1. JSON logs with a request id and a PII policy.
   2. Sentry.
-  3. `/healthz`, `/readyz`.
+  3. `/healthz`, `/readyz`. *`/readyz` done in session 031; no `/healthz` yet.*
   4. `pg_stat_statements`.
   5. Metrics (stage 1, section G).
   6. Extend `loadtest/run.py`: `--scenario reconnect-storm|http-only`, heavy-user seeding.
@@ -183,7 +183,7 @@ says which test proves the mitigation works.
 | T-18 | Cursor pagination for history (expand/contract) | M | 4–6 h | T-09 | `chats/views.py`, `assets/app.js` | Deep page latency flat; no duplicates/gaps in test |
 | T-19 | Drop redundant indexes | L | 1 h | T-12 (measure) | migration (`RemoveIndexConcurrently`) | Insert cost measured before/after |
 | T-20 | WS token never logged (proxy log format, later socket ticket) | M | 1–4 h | T-10 | proxy config / `chats/middleware.py` | `grep token=` on logs empty |
-| T-21 | Redis failure behaviour: throttles fail open, `/readyz` reports it. **Partial:** REST throttles fail open since session 019; `/readyz` not done | M | 2–4 h | T-03 | `root/settings.py`, custom throttle cache handling | Stop Redis: REST still answers, 5xx rate < 1% |
+| T-21 | Redis failure behaviour: throttles fail open, `/readyz` reports it. **Partial:** REST throttles fail open since session 019; `/readyz` done (session 031: 503 when Postgres or Redis is down); the Redis-outage 5xx rate not measured yet | M | 2–4 h | T-03 | `root/settings.py`, custom throttle cache handling | Stop Redis: REST still answers, 5xx rate < 1% |
 | T-22 | Second app process + cross-process test | M | 2–4 h | T-13 | proxy config | A on process 1, B on process 2 exchange messages |
 | T-29 | Cache chat membership on the socket (optional) | L | 2 h | T-13 + profile showing `get_chat` matters | `chats/consumers.py` | Only if profiling justifies it |
 

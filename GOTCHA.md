@@ -38,6 +38,8 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
 
 - **`root/settings_test.py` inherits every production setting** (`DEBUG` is off there). New production-only
   settings can break the test client; e.g. `SECURE_SSL_REDIRECT` turned every request into a 301. → [P-10](docs/learning-journal/problems-and-solutions.md#p-10--39-tests-failed-after-adding-the-https-settings)
+- **Locally, `make test` runs with your `.env`'s `DEBUG` (True); CI runs with it off.** A setting inside
+  `if not DEBUG:` doesn't exist in your local tests. → [P-35](docs/learning-journal/problems-and-solutions.md#p-35--a-production-only-setting-was-missing-from-the-local-tests)
 - **`DJANGO_DEBUG` is `True`/`False`, not `1`/`0`.** Anything else means production mode, including locally.
 - **The dev fallback `SECRET_KEY` exists only when `DEBUG` is on.** Never add a fallback that also applies in production.
 - **Django loads many dependencies by *string* in `settings.py`** (`INSTALLED_APPS`, `CHANNEL_LAYERS`, `CACHES`).

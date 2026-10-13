@@ -22,6 +22,9 @@ ALLOWED_HOSTS = [h.strip() for h in os.environ.get('DJANGO_ALLOWED_HOSTS', '').s
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS', '').split(',')
                         if o.strip()]
 
+# Load balancers probe the app directly over plain HTTP; a redirect would read as "down".
+SECURE_REDIRECT_EXEMPT = [r'^readyz$']
+
 if not DEBUG:
     # TLS ends at the reverse proxy, which must set X-Forwarded-Proto.
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
