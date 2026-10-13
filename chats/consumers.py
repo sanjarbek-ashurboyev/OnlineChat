@@ -31,6 +31,9 @@ AUTH_RECHECK_SECONDS = 60
 # Codex audit M-02: the channel layer drops a group member after group_expiry (24 h), and the socket
 # then gets nothing. Closing it well before means the browser reconnects and joins again.
 MAX_SOCKET_SECONDS = 12 * 60 * 60
+# T-15 (PERF-3): frames write last_seen at most this often per socket, like REST's TOUCH_INTERVAL. Connect and
+# disconnect always write it; in between, "online" comes from presence, not from last_seen.
+LAST_SEEN_INTERVAL = 60
 
 
 def group_for_user(user_id):
@@ -165,7 +168,7 @@ class InboxConsumer(AsyncWebsocketConsumer):
     async def receive(self, text_data=None, bytes_data=None):
         if getattr(self, 'refused', False):
             return  # a frame that got in before our close
-        # Every frame counts, pings included: each one writes last_seen to the database.
+        # Every frame counts against the rate limit, pings included.
         if not self.bucket.take():
             await self.send_error('Slow down.')
             return
@@ -179,7 +182,8 @@ class InboxConsumer(AsyncWebsocketConsumer):
             await self.send_error('Expected a JSON object.')
             return
 
-        await self.touch_last_seen()
+        if time.monotonic() - self.last_seen_at >= LAST_SEEN_INTERVAL:
+            await self.touch_last_seen()
         action = payload.get('action', 'message')
 
         if action == 'ping':
@@ -282,4 +286,5 @@ class InboxConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def touch_last_seen(self):
+        self.last_seen_at = time.monotonic()
         User.objects.filter(pk=self.user.pk).update(last_seen=timezone.now())
