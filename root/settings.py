@@ -94,11 +94,13 @@ REDIS_URL = f'redis://{REDIS_HOST}:{REDIS_PORT}'
 
 CHANNEL_LAYERS = {
     'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        # channels_redis, but its Redis pool waits for a free connection instead of raising (chats/layers.py).
+        'BACKEND': 'chats.layers.WaitingRedisChannelLayer',
         # Each consumer waits up to 5 s in BZPOPMIN for a message (channels_redis
         # brpop_timeout). redis-py 8 defaults to a 5 s socket timeout, which fires
         # first and crashes every idle socket. Give reads longer than the wait.
-        'CONFIG': {'hosts': [{'address': REDIS_URL, 'socket_timeout': 10}]},
+        # max_connections: per process. timeout: how long a call may wait for one of them.
+        'CONFIG': {'hosts': [{'address': REDIS_URL, 'socket_timeout': 10, 'max_connections': 100, 'timeout': 5}]},
     },
 }
 
