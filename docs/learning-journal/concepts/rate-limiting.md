@@ -58,9 +58,8 @@ window, and requests work again.
 | `POST /auth/register/` | `register_ip` | 5/hour | IP, even when signed in (session 019) | Mass fake accounts |
 | `POST /auth/token/refresh/` | `refresh` | 30/min | IP | Cheap to call, no reason to call often |
 | `GET /users/<id>/` | `profile_read` | 120/min | User | Walking every id |
-| `POST /chats/` | `chat_create` | 30/hour | User | Messaging everyone |
+| `POST /chats/` | `chat_create` | 20/hour (30 before T-05) | User | Messaging everyone, and probing phone numbers: a chat starts from a number since T-05 ([decision 013](../decisions/013-start-a-chat-by-phone-number.md)), so misses count too |
 | `POST /chats/<id>/messages/` | `message_send` | 60/min | User | Same rate as the socket, so REST isn't a way around it (session 015) |
-| `GET /users/lookup/` | `user_lookup` | 20/hour | User | Already there before T-03 |
 
 The DRF classes we use:
 - **`ScopedRateThrottle`**: counts a signed-in user by their id, and anyone else by IP. The rate comes from
@@ -135,6 +134,9 @@ WAF later. They stack: each layer catches what the others can't see.
   then resets the counter. Use a throttle that always uses the IP.
 - **Per-IP limits that are too strict.** Mobile carriers and offices put many people behind one IP. Keep IP
   limits generous and per-account limits strict.
+- **A limit on the side door only.** Before T-05 the phone lookup was limited to 20/hour, but chats started from a
+  user id, so anyone could skip the lookup and count up ids. Limit the action itself, and make it need what the
+  limit is protecting (here: knowing the number).
 - **Not normalising the key.** `90 123 45 01` and `+998901234501` are the same account. Without
   normalising, an attacker gets a fresh counter for every way of writing the number.
 - **A cache that isn't shared.** Django's `LocMemCache` counts per process. With 4 processes, the real

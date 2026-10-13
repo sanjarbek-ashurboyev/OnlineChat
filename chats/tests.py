@@ -9,7 +9,7 @@ from rest_framework.test import APIClient
 from accounts.models import User
 from chats import presence
 from chats.models import MAX_MESSAGE_LENGTH, Block, Chat, Message
-from test_helpers import FakePresenceMixin, client_for, make_user, token_for
+from test_helpers import FakePresenceMixin, client_for, make_user, phone, token_for
 
 CHATS = '/api/v1/chats/'
 
@@ -21,53 +21,81 @@ def say(chat, sender, text, minutes_ago=0):
 
 
 class StartChatTests(FakePresenceMixin, TestCase):
+    """T-05: a chat starts from the other person's phone number, never from a guessable user id."""
+
     def setUp(self):
         super().setUp()
+        cache.clear()  # the chat_create throttle counts in the cache
+        self.addCleanup(cache.clear)
         self.me = make_user(1)
         self.other = make_user(2)
 
-    def start(self, participant_id, user=None):
-        return client_for(user or self.me).post(CHATS, {'participant_id': participant_id})
+    def start(self, number, user=None):
+        return client_for(user or self.me).post(CHATS, {'phone_number': number})
 
     def test_starting_a_chat_returns_it_with_the_other_participant(self):
-        response = self.start(self.other.id)
+        response = self.start(phone(2))
 
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data['participant']['id'], self.other.id)
         self.assertEqual(response.data['unread_count'], 0)
 
+    def test_accepts_local_or_international_numbers(self):
+        for number in (phone(2), '90 123 45 02', '901234502'):
+            with self.subTest(number):
+                response = self.start(number)
+                self.assertEqual(response.status_code, 201)
+                self.assertEqual(response.data['participant']['id'], self.other.id)
+
+    def test_does_not_reveal_the_phone_number(self):
+        self.assertNotIn('phone_number', self.start(phone(2)).data['participant'])
+
+    def test_a_user_id_alone_cannot_start_a_chat(self):
+        response = client_for(self.me).post(CHATS, {'participant_id': self.other.id})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('phone_number', response.data)
+        self.assertEqual(Chat.objects.count(), 0)
+
     def test_the_same_pair_always_gets_the_same_chat(self):
-        first = self.start(self.other.id).data['id']
-        again = self.start(self.other.id).data['id']
-        from_the_other_side = self.start(self.me.id, user=self.other).data['id']
+        first = self.start(phone(2)).data['id']
+        again = self.start(phone(2)).data['id']
+        from_the_other_side = self.start(phone(1), user=self.other).data['id']
 
         self.assertEqual(first, again)
         self.assertEqual(first, from_the_other_side)
         self.assertEqual(Chat.objects.count(), 1)
 
     def test_you_cannot_chat_with_yourself(self):
-        self.assertEqual(self.start(self.me.id).status_code, 400)
+        self.assertEqual(self.start(phone(1)).status_code, 400)
 
-    def test_a_user_who_blocked_you_looks_like_a_missing_user(self):
-        Block.objects.create(blocker=self.other, blocked=self.me)
-        blocked = self.start(self.other.id)
-        missing = self.start(999999)
+    def test_a_block_either_way_looks_like_a_missing_user(self):
+        missing = self.start(phone(99))
+        self.assertEqual(missing.status_code, 404)
+        for blocker, blocked in ((self.other, self.me), (self.me, self.other)):
+            with self.subTest(blocker=blocker.first_name):
+                block = Block.objects.create(blocker=blocker, blocked=blocked)
+                response = self.start(phone(2))
+                self.assertEqual(response.status_code, 404)
+                self.assertEqual(response.data, missing.data, 'a block must not be detectable')
+                block.delete()
+        self.assertEqual(Chat.objects.count(), 0)
 
-        self.assertEqual(blocked.status_code, 400)
-        self.assertEqual(blocked.data, missing.data, 'a block must not be detectable')
+    def test_invalid_or_missing_number_is_a_400(self):
+        self.assertEqual(self.start('12345').status_code, 400)
+        self.assertEqual(client_for(self.me).post(CHATS, {}).status_code, 400)
 
     def test_requires_authentication(self):
-        self.assertEqual(APIClient().post(CHATS, {'participant_id': self.other.id}).status_code, 401)
+        self.assertEqual(APIClient().post(CHATS, {'phone_number': phone(2)}).status_code, 401)
 
-    def test_starting_chats_is_limited_to_30_an_hour_but_listing_is_not(self):
-        # SEC-4: stops one account from messaging every user.
-        cache.clear()
-        self.addCleanup(cache.clear)
-        for _ in range(30):
-            self.assertEqual(self.start(self.other.id).status_code, 201)
-        self.assertEqual(self.start(self.other.id).status_code, 429)
+    def test_starting_chats_is_limited_to_20_an_hour_but_listing_is_not(self):
+        # SEC-4: stops one account from messaging every user, or walking phone numbers to find accounts.
+        # Misses count too: that's what a scraper's requests mostly are.
+        for n in range(20):
+            self.assertIn(self.start(phone(2) if n % 2 else phone(99)).status_code, (201, 404))
+        self.assertEqual(self.start(phone(2)).status_code, 429)
         self.assertEqual(client_for(self.me).get(CHATS).status_code, 200)
-        self.assertEqual(self.start(self.me.id, user=self.other).status_code, 201,
+        self.assertEqual(self.start(phone(1), user=self.other).status_code, 201,
                          'other users are unaffected')
 
 

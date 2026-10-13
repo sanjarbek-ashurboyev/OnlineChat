@@ -1,6 +1,6 @@
 # Progress
 
-*Updated: 2026-10-13 (session 028).*
+*Updated: 2026-10-13 (session 029).*
 
 **Status words:** **Done** = code written, tests or checks run and passing, committed.
 **Partial** = some of the acceptance criteria are met. **Blocked** = waiting on something outside
@@ -45,6 +45,7 @@ were already fixed on `main` before this journal started.
 | Codex audit 2 (M-20, M-22): the OpenAPI schema declares the JWT, real field types and real responses, with a test failing on any warning; CI fails if browser tests can't run; a failed browser start leaves nothing behind | **Done** on branch, [PR #35](https://github.com/sanjarbek-ashurboyev/OnlineChat/pull/35) open | 8 schema tests and 5 setup tests failed first, 1 guard passes; schema warnings 13 → 0; `make test` 146 OK (12 skipped); real Postgres + Redis with browser tests required 171 OK; Ruff clean | [session 025](sessions/025-api-contract-and-browser-skips.md) |
 | Codex gaps at `1abe93c`: a late 401 isn't replayed for the next account; no double send during the lost-echo check; catch-up after a socket that got ready mid-history; load-test receipts carry `up_to` | **Done** on branch, PR open (stacked on #35) | 4 new tests failed first; real load test: `server_errors` 169 → 0; `make test` 147 OK (12 skipped); real Postgres + Redis with browser tests required 175 OK; Ruff clean | [session 027](sessions/027-session-replay-and-recovery.md) |
 | Stage 0 baseline, rerun with the fixed tester (server Mac only; second-machine run dropped) | **Done** (docs on `t-12-stage0-baseline`) | `main` `77722d8`, one Daphne process, plan limits: **healthy at 500** (msg p95 267 ms), **fails at 750** (p95 2.3 s), 242/926 messages without echo at 1,250; chat list < 50 ms at every step | [session 028](sessions/028-stage0-baseline.md) |
+| T-05 Who can start a chat: phone number required, `/users/lookup/` removed, `chat_create` 20/hour, block either way = 404 ([decision 013](decisions/013-start-a-chat-by-phone-number.md)) | **Done** on `t-05-chat-by-phone` (stacked on #38) | New tests: 8 failures + 2 errors on the old code, then pass; `make test` 152 OK (14 skipped); real Postgres + Redis with browser tests required 183 OK; Ruff clean | [session 029](sessions/029-t05-chat-by-phone.md) |
 
 Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), and 50/50 tests pass locally.
 

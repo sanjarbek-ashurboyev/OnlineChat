@@ -1,5 +1,7 @@
 from django.db.models import Q
 from drf_spectacular.utils import extend_schema_field, inline_serializer
+from phonenumber_field.phonenumber import to_python
+from rest_framework.exceptions import NotFound
 from rest_framework.fields import (
     CharField,
     DateTimeField,
@@ -67,23 +69,26 @@ class ReadSerializer(Serializer):
 
 
 class ChatCreateSerializer(Serializer):
-    participant_id = IntegerField(write_only=True)
+    # T-05: a phone number, not a user id. Ids are sequential, so anyone could message every user.
+    phone_number = CharField(write_only=True, help_text='E.164 or local UZ format.')
 
-    def validate_participant_id(self, value):
+    def validate_phone_number(self, value):
         me = self.context['request'].user
-        if value == me.pk:
+        number = to_python(value, region='UZ')
+        if not number or not number.is_valid():
+            raise ValidationError('Enter a valid phone number.')
+        if number == me.phone_number:
             raise ValidationError("You can't start a chat with yourself.")
 
-        blocked = Block.objects.filter(
-            Q(blocker_id=value, blocked=me) | Q(blocker=me, blocked_id=value)
-        )
-        # A block is reported as a missing user so it stays undetectable.
-        if not User.objects.filter(pk=value).exists() or blocked.exists():
-            raise ValidationError('No such user.')
-        return value
+        other = User.objects.filter(phone_number=number).first()
+        # A block either way is reported as a missing user, so it stays undetectable.
+        if other is None or Block.objects.filter(
+            Q(blocker=other, blocked=me) | Q(blocker=me, blocked=other)
+        ).exists():
+            raise NotFound('Nobody is registered with that number.')
+        return other
 
     def create(self, validated_data):
         me = self.context['request'].user
-        other = User.objects.get(pk=validated_data['participant_id'])
-        chat, _ = Chat.objects.get_or_create_chat(me, other)
+        chat, _ = Chat.objects.get_or_create_chat(me, validated_data['phone_number'])
         return chat

@@ -178,13 +178,13 @@ REST_FRAMEWORK = {
     ),
     # Anonymous scopes count per IP, signed-in ones per user (docs/scaling/02-plan.md, Decision 0.2).
     'DEFAULT_THROTTLE_RATES': {
-        'user_lookup': '20/hour',
         'login_ip': '20/min',
         'login_phone': '5/min',
         'register_ip': '5/hour',
         'refresh': '30/min',
         'profile_read': '120/min',
-        'chat_create': '30/hour',
+        # Starting a chat needs a phone number (T-05), so this also caps how fast one account can probe numbers.
+        'chat_create': '20/hour',
         # REST sends; the socket allows the same sustained 1/s (chats/consumers.py).
         'message_send': '60/min',
     },

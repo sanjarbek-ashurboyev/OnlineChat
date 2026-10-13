@@ -17,6 +17,7 @@ choose differently. If new evidence changes a decision, update the file and say 
 | [010](010-blocked-peer-in-the-chat-list.md) | Someone who blocked you: keep the chat, blank their details | Accepted | [024](../sessions/024-privacy-and-uploads.md) |
 | [011](011-delete-avatar-files-after-commit.md) | Delete old avatar files with our own signals, after the commit | Accepted | [024](../sessions/024-privacy-and-uploads.md) |
 | [012](012-required-browser-tests.md) | CI requires the browser tests; elsewhere they may skip | Accepted | [025](../sessions/025-api-contract-and-browser-skips.md) |
+| [013](013-start-a-chat-by-phone-number.md) | A chat starts from a phone number, not a user id | Accepted | [029](../sessions/029-t05-chat-by-phone.md) |
 
 The bigger scaling decisions are in the plan, [docs/scaling/02-plan.md](../../scaling/02-plan.md):
 - **Stage 0:** 0.1 where secrets live, 0.2 rate limiting, 0.3 making live delivery recoverable.

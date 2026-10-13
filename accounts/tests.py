@@ -328,47 +328,6 @@ class AvatarTests(TestCase):
         self.assertTrue(default_storage.exists(old))
 
 
-class UserLookupTests(FakePresenceMixin, TestCase):
-    URL = '/api/v1/users/lookup/'
-
-    def setUp(self):
-        super().setUp()
-        cache.clear()  # the lookup throttle counts in the cache
-        self.me = make_user(1)
-        self.other = make_user(2)
-
-    def lookup(self, number, client=None):
-        return (client or client_for(self.me)).get(self.URL, {'phone_number': number})
-
-    def test_finds_a_user_by_local_or_international_number(self):
-        for number in (phone(2), '90 123 45 02', '901234502'):
-            with self.subTest(number):
-                response = self.lookup(number)
-                self.assertEqual(response.status_code, 200)
-                self.assertEqual(response.data['id'], self.other.id)
-
-    def test_does_not_reveal_the_phone_number(self):
-        self.assertNotIn('phone_number', self.lookup(phone(2)).data)
-
-    def test_you_cannot_look_yourself_up(self):
-        self.assertEqual(self.lookup(phone(1)).status_code, 404)
-
-    def test_someone_who_blocked_you_looks_like_a_missing_user(self):
-        Block.objects.create(blocker=self.other, blocked=self.me)
-        self.assertEqual(self.lookup(phone(2)).status_code, 404)
-
-    def test_invalid_or_missing_number_is_a_400(self):
-        self.assertEqual(self.lookup('12345').status_code, 400)
-        self.assertEqual(client_for(self.me).get(self.URL).status_code, 400)
-
-    def test_lookups_are_limited_to_20_an_hour(self):
-        # Phone-number lookup is how scrapers would enumerate accounts.
-        client = client_for(self.me)
-        for _ in range(20):
-            self.assertEqual(self.lookup(phone(2), client).status_code, 200)
-        self.assertEqual(self.lookup(phone(2), client).status_code, 429)
-
-
 class PublicUserTests(FakePresenceMixin, TestCase):
     def setUp(self):
         super().setUp()

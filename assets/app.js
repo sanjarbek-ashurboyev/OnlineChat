@@ -317,8 +317,7 @@ $('lookup-form').addEventListener('submit', async (e) => {
   msg.textContent = 'Searching…';
 
   try {
-    const user = await api(`/users/lookup/?phone_number=${encodeURIComponent(field.value.trim())}`);
-    const chat = await api('/chats/', { method: 'POST', body: { participant_id: user.id } });
+    const chat = await api('/chats/', { method: 'POST', body: { phone_number: field.value.trim() } });
     field.value = '';
     msg.hidden = true;
     await loadChats();
