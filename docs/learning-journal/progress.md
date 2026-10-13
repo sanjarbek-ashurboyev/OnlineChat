@@ -1,6 +1,6 @@
 # Progress
 
-*Updated: 2026-10-13 (session 032).*
+*Updated: 2026-10-13 (session 033).*
 
 **Status words:** **Done** = code written, tests or checks run and passing, committed.
 **Partial** = some of the acceptance criteria are met. **Blocked** = waiting on something outside
@@ -49,6 +49,7 @@ were already fixed on `main` before this journal started.
 | T-07 Refresh rotation + server-side logout (SEC-7): each refresh token works once, `POST /auth/logout/` blacklists it; the browser shares one renewal per tab and picks up another tab's (same account only) ([decision 014](decisions/014-refresh-rotation-and-logout.md)) | **Done** on `t-07-refresh-rotation-logout` (stacked on #39) | 4 server tests and 3 browser tests failed first, 2 guards pass; `make test` 157 OK (15 skipped); real Postgres + Redis with browser tests required 192 OK; no missing migrations; Ruff clean | [session 030](sessions/030-t07-refresh-rotation-and-logout.md) |
 | `/readyz` (T-21 part, T-12 step 3): 200 when Postgres and Redis answer, 503 naming the failed one; exempt from the HTTPS redirect | **Done** on `t-21-readyz` (stacked on #40). T-21 itself still *Partial* (outage 5xx rate not measured) | 5 tests failed first; real Daphne in production mode: 200 / 503 (Redis off) / 503 (DB off); `make test` 162 OK (15 skipped); real Postgres + Redis with browser tests required 197 OK; Ruff clean | [session 031](sessions/031-readyz.md) |
 | T-13 Connection pool (psycopg 3, PERF-2): `OPTIONS['pool']` 2/10/5 s | **Done** on `t-13-db-pool` (stacked on #41) | Pool test failed first (20 connections for 20 calls); one DB call p95 7.6 → 0.67 ms; load test same Mac, same day: healthy at **500 → 2,000+** (2,000: msg p95 86 ms, p99 374 ms); Postgres sessions per run 33,566 → 227; `make test` 163 OK (16 skipped); real Postgres + Redis with browser tests required 198 OK; Ruff clean | [session 032](sessions/032-t13-connection-pool.md) |
+| Channel layer waits for a Redis connection (T-02 follow-up, `chats/layers.py`, `BlockingConnectionPool` 100 / 5 s) | **Done** on `t-02-redis-pool-wait` | Burst test failed first (`MaxConnectionsError`); load test to 3,000 (3,000 seeded): `group_discard` errors 1,214 → 0, ceiling unchanged (healthy 2,000, fail 2,500); 3,000-socket burst: dead group entries 2,881 → 0, clean in ~3 s; `make test` 164 OK (17 skipped); real stack 199 OK; Ruff clean | [session 033](sessions/033-redis-pool-waits.md) |
 
 Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), and 50/50 tests pass locally.
 

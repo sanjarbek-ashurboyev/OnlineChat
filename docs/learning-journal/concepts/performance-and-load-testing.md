@@ -59,6 +59,9 @@ than they drain. Waiting time grows roughly like `busy / (1 - busy)`: 0.4/0.6 �
 - **After the connection pool (T-13, session 032):** one call 6.9 → 0.45 ms (p50); the same test is healthy at
   **2,000** online (message p95 86 ms), against 500 before, run the same afternoon. Postgres went from 33,566 new
   sessions per run to 227. That confirmed PERF-2 by changing only the connection handling.
+- **The ceiling with 3,000 seeded users (session 033):** one process healthy at 2,000, failing at 2,500 (message p95
+  403–528 ms), losing messages at 3,000. The waiting Redis pool removed the end-of-test errors but, as expected,
+  didn't move this.
 - **Mechanism** ([audit PERF-1…4](../../scaling/01-audit.md#15-confirmed-findings-performance)):
   1. `database_sync_to_async` sends all of a process's ORM calls to **one thread**.
   2. `CONN_MAX_AGE=0` means a new Postgres connection for every call.

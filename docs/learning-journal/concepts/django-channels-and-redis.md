@@ -88,6 +88,8 @@ class EchoConsumer(AsyncWebsocketConsumer):
   ([P-13](../problems-and-solutions.md#p-13--a-burst-of-disconnects-left-users-online-cor-2)).
 - **Assuming "too many connections" means the Redis server is full.** Here it was the client-side pool:
   redis-py's `ConnectionPool` allows 100 connections per process by default, and raises instead of waiting.
+  Since session 033 our layer (`chats/layers.WaitingRedisChannelLayer`) uses redis-py's `BlockingConnectionPool`:
+  the same 100 connections, but a call that finds them all busy waits (up to 5 s) for one to come free.
 - **One expiry for a whole group of items.** If *any* member's activity renews the shared TTL, a dead
   member never expires. Give each item its own timestamp (a sorted set) and count only recent ones.
 - **Forgetting that group membership expires.** `channels_redis` drops a member after `group_expiry`

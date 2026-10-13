@@ -196,6 +196,9 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   - `disconnect()` catches and logs a `group_discard` failure, then still marks the user offline.
   - The stale group entry is harmless and expires by itself (`group_expiry`).
   - Pool sizing is **not changed yet**: it's a capacity decision for Stage 1, to be measured with the load test.
+  - **Follow-up (session 033):** channels-redis now gets a `BlockingConnectionPool` (`chats/layers.py`), which waits
+    for a free connection. 3,000 sockets closing at once: 2,881 failed `group_discard`s and 2,881 dead group entries
+    before, 0 and 0 after (cleaned up within ~3 s).
 - **Verified:**
   - A test (`test_a_failed_group_discard_still_marks_the_user_offline`) made `group_discard` raise
     `MaxConnectionsError`. It failed before the fix and passes after.
@@ -573,4 +576,17 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
 - **Fix:** the exemption moved out of the `if not DEBUG:` block. It's harmless with DEBUG on. The test passes both ways.
 - **Lesson:** local tests and CI don't share `DEBUG`. Put settings a test relies on outside `if not DEBUG:`, or run the
   test both ways (`DJANGO_DEBUG=False make test`).
+
+## P-36 · Thousands of "leftovers" in Redis that the app never left
+
+- **Session:** [033](sessions/033-redis-pool-waits.md)
+- **Observed:** after a load test with the fixed channel layer (0 errors in the log), Redis still held 2,990 presence
+  keys with a member and thousands of group entries from that run, as if `disconnect()` had never run.
+- **Root cause (Confirmed, by experiment):** my load-test script stopped Daphne (SIGTERM) the moment the tester exited.
+  Daphne was still working through 3,000 disconnects, each needing several calls on the one thread (presence,
+  `last_seen`), so most never ran. The same burst with a 30 s pause before stopping: **0 leftovers**; polled every
+  second: all cleaned up within ~3 s.
+- **Fix:** the script waits 30 s before stopping Daphne.
+- **Lesson:** "check the state after the test" needs the server to have *finished* the test. And it's a real deploy
+  concern too: stopping a process mid-burst skips cleanup (T-27, graceful WebSocket shutdown).
 
