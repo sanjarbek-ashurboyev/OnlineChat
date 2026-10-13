@@ -603,3 +603,27 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   fast that run was, and interleave runs (A-B-A-B) before claiming a ceiling moved.
 - **Lesson:** near the ceiling, a single before/after pair can't show a 250-user difference.
 
+
+## P-39 · One refresh token, two parallel requests, two new tokens
+
+- **Session:** [036](sessions/036-login-sessions.md)
+- **Observed:** on `main` (`35eb53a`), two requests to `/auth/token/refresh/` with the same token both answered 200,
+  and both new tokens kept working: 20 of 20 tries against a real Daphne, every time in a test that holds both
+  requests at the same point.
+- **Root cause (Confirmed, from SimpleJWT 5.5.1's code and the test):** "check, then act" in separate statements.
+  Each request checks the blacklist (`SELECT`), then blacklists with `get_or_create`; the slower one gets the existing
+  row back (`created=False`), which no one checks.
+- **Fix:** a `LoginSession` row per login holds the id of the one usable refresh token; refresh swaps it with one
+  `UPDATE ... WHERE refresh_jti = <presented>`, and 0 rows changed means 401 (decision 016).
+- **Lesson:** `get_or_create` doesn't claim anything. Make the write carry the condition and read the row count.
+
+## P-40 · Logout from a tab with an older token didn't end the login
+
+- **Session:** [036](sessions/036-login-sessions.md)
+- **Observed:** tab A renewed R0 → R1; tab B, still holding R0, logged out: 401, and R1 kept working. The same when B
+  logged out while A's renewal was on its way back.
+- **Root cause (Confirmed):** logout blacklisted *one token*, and R0 was already blacklisted by A's renewal. Nothing
+  connected R0 and R1 as the same login.
+- **Fix:** every refresh token of a login carries the login's id (`sid`); logout ends the session row, whichever of
+  its tokens it gets.
+- **Lesson:** revoke the thing the user means ("this login"), not the piece of it the client happens to hold.

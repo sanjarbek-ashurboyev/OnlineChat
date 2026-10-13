@@ -15,10 +15,9 @@ from datetime import timedelta
 from channels.testing import ChannelsLiveServerTestCase
 from django.db import connection
 from django.utils import timezone
-from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
-from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.test import APIClient
 
-from accounts.models import User
+from accounts.models import LoginSession, User
 from chats.models import Block, Chat, Message
 from test_helpers import PASSWORD, make_user, phone, token_for
 
@@ -95,7 +94,7 @@ class BrowserTestCase(ChannelsLiveServerTestCase):
         self.addCleanup(context.close)
         script = f"localStorage.setItem('access', '{token_for(user)}');"
         if refresh:
-            script += f"localStorage.setItem('refresh', '{RefreshToken.for_user(user)}');"
+            script += f"localStorage.setItem('refresh', '{LoginSession.objects.start(user)}');"
         context.add_init_script(script)
         page = context.new_page()
         if setup:
@@ -705,13 +704,57 @@ class RefreshRotationTests(BrowserTestCase):
     def test_another_accounts_token_is_never_picked_up(self):
         page = self.open_app(refresh=True)
         page.evaluate(self.RENEW_IN_ANOTHER_TAB)
-        page.evaluate(f"localStorage.setItem('refresh', '{RefreshToken.for_user(self.friend)}')")
+        page.evaluate(f"localStorage.setItem('refresh', '{LoginSession.objects.start(self.friend)}')")
         result = page.evaluate("state.access = 'expired'; api('/auth/profile/').then((p) => p.id, (e) => e.status)")
         self.assertEqual(result, 401)
 
     def test_logout_retires_the_refresh_token_on_the_server(self):
         page = self.open_app(refresh=True)
-        token = page.evaluate('state.refresh')
         with page.expect_request('**/api/v1/auth/logout/', timeout=5000):
             page.locator('#logout').click()
-        self.wait_until(page, lambda: BlacklistedToken.objects.filter(token__token=token).exists())
+        self.wait_until(page, lambda: LoginSession.objects.filter(user=self.me, ended_at__isnull=False).exists())
+
+    def second_tab(self, page):
+        """Another tab of the same browser: it shares localStorage, but holds its own copy of the tokens."""
+        tab = page.context.new_page()
+        tab.goto(self.live_server_url)
+        expect(tab.locator('#conn-state.is-open')).to_be_attached()
+        return tab
+
+    def still_renews(self, refresh):
+        return APIClient().post('/api/v1/auth/token/refresh/', {'refresh': refresh}).status_code == 200
+
+    def test_logout_from_a_tab_with_an_older_token_ends_the_login(self):
+        # Codex review of #40: tab A renewed R0 -> R1; tab B still held R0 and logged out with it.
+        first = self.open_app(refresh=True)
+        second = self.second_tab(first)
+        first.evaluate("state.access = 'expired'; api('/auth/profile/')")  # renews: R0 -> R1
+        renewed = first.evaluate('state.refresh')
+        self.assertNotEqual(renewed, second.evaluate('state.refresh'))
+
+        with second.expect_response('**/api/v1/auth/logout/') as logout:
+            second.locator('#logout').click()
+        self.assertEqual(logout.value.status, 200)
+        self.assertFalse(self.still_renews(renewed), 'the other tab is still signed in')
+
+    def test_logout_while_another_tab_is_renewing_ends_the_new_token_too(self):
+        # The server has already swapped R0 for R1 when B logs out with R0; A only receives R1 afterwards.
+        first = self.open_app(refresh=True)
+        second = self.second_tab(first)
+        held = []
+
+        def renew_but_hold_the_answer(route):
+            held.append((route, route.fetch()))
+
+        first.route('**/api/v1/auth/token/refresh/', renew_but_hold_the_answer)
+        first.evaluate("state.access = 'expired'; void api('/auth/profile/').catch(() => {})")
+        self.wait_until(first, lambda: held)
+
+        with second.expect_response('**/api/v1/auth/logout/') as logout:
+            second.locator('#logout').click()
+        self.assertEqual(logout.value.status, 200)
+        route, answer = held[0]
+        renewed = answer.json()['refresh']
+        route.fulfill(response=answer)
+
+        self.assertFalse(self.still_renews(renewed), 'the renewal that crossed the logout still works')

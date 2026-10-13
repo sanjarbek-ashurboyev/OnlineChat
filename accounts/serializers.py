@@ -1,11 +1,19 @@
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 from rest_framework.fields import CharField, SerializerMethodField
-from rest_framework.serializers import ModelSerializer
+from rest_framework.serializers import ModelSerializer, Serializer
+from rest_framework_simplejwt.exceptions import InvalidToken
+from rest_framework_simplejwt.serializers import (
+    TokenObtainPairSerializer,
+    TokenRefreshSerializer,
+)
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.utils import datetime_from_epoch
 
-from accounts.models import User
+from accounts.models import LoginSession, User
 from chats import presence
 
 MAX_AVATAR_BYTES = 2 * 1024 * 1024
@@ -90,3 +98,35 @@ class PublicUserSerializer(ModelSerializer):
         if presence_map is not None:
             return presence_map.get(obj.pk, False)
         return presence.is_online(obj.pk)
+
+
+class LoginSerializer(TokenObtainPairSerializer):
+    @classmethod
+    def get_token(cls, user):
+        return LoginSession.objects.start(user)
+
+
+class SessionRefreshSerializer(TokenRefreshSerializer):
+    def validate(self, attrs):
+        presented = self.token_class(attrs['refresh'])
+        data = super().validate(attrs)  # checks the token and the account, and makes the new pair
+        renewed = self.token_class(data['refresh'], verify=False)
+        # One UPDATE swaps the session's token, and only if it's still the presented one. Two requests with the same
+        # token both match the row, but the database runs them one after the other: the second finds the new id and
+        # changes nothing. An ended session or a token without `sid` matches nothing either.
+        swapped = LoginSession.objects.filter(
+            pk=presented.get('sid'), refresh_jti=presented['jti'], ended_at=None,
+        ).update(refresh_jti=renewed['jti'], expires_at=datetime_from_epoch(renewed['exp']))
+        if not swapped:
+            raise InvalidToken('Token is no longer valid')
+        return data
+
+
+class LogoutSerializer(Serializer):
+    refresh = CharField(write_only=True)
+
+    def validate(self, attrs):
+        # Any refresh token of the login will do, even one already renewed: another tab may have renewed it.
+        token = RefreshToken(attrs['refresh'])
+        LoginSession.objects.filter(pk=token.get('sid'), ended_at=None).update(ended_at=timezone.now())
+        return {}

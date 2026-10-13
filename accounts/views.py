@@ -6,16 +6,19 @@ from rest_framework.generics import (
 )
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.views import (
-    TokenBlacklistView,
     TokenObtainPairView,
     TokenRefreshView,
+    TokenViewBase,
 )
 
 from accounts.models import User
 from accounts.serializers import (
+    LoginSerializer,
+    LogoutSerializer,
     ProfileSerializer,
     PublicUserSerializer,
     RegisterSerializer,
+    SessionRefreshSerializer,
 )
 from accounts.throttles import (
     LoginIPThrottle,
@@ -34,16 +37,19 @@ class RegisterCreateAPIView(CreateAPIView):
 
 @extend_schema(tags=['auth'])
 class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = LoginSerializer
     throttle_classes = [LoginIPThrottle, LoginPhoneThrottle]
 
 @extend_schema(tags=['auth'])
 class CustomTokenRefreshView(TokenRefreshView):
+    serializer_class = SessionRefreshSerializer
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'refresh'
 
 @extend_schema(tags=['auth'])
-class LogoutView(TokenBlacklistView):
-    """Blacklists the refresh token. Needs no access token: it may have expired, and the refresh token is the proof."""
+class LogoutView(TokenViewBase):
+    """Ends the login. Needs no access token: it may have expired, and the refresh token is the proof."""
+    serializer_class = LogoutSerializer
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'refresh'
 

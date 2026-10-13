@@ -57,6 +57,8 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
 - **macOS has no `timeout` command.** `timeout 40 cmd` fails with "command not found", so the command never runs.
   Use Python's `subprocess.run(..., timeout=40)` instead.
 - **"0 tests ran" is not "tests pass".**
+- **In scripts, run `manage.py test --noinput`.** After an interrupted run the test database is left behind, and the
+  next run asks "delete it?" and waits forever (session 036).
 - **Browser tests (`chats/test_browser.py`) skip on `make test`.** Run them with Docker up:
   `python manage.py test chats.test_browser`. A skip is not a pass: CI sets `REQUIRE_BROWSER_TESTS=True`, which turns
   any skip into an error ([decision 012](docs/learning-journal/decisions/012-required-browser-tests.md)).
@@ -129,6 +131,10 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
 
 ## Runtime and infrastructure
 
+- **`get_or_create` doesn't claim anything.** Two requests that both checked "not there yet" both succeed; the second
+  just gets the first one's row back. A refresh token was spent twice this way. Put the condition in the `UPDATE`'s
+  `WHERE` and read the row count. → [P-39](docs/learning-journal/problems-and-solutions.md#p-39--one-refresh-token-two-parallel-requests-two-new-tokens)
+- **With rotating tokens, revoke the login, not a token.** A stale tab's older token must still end it. → [P-40](docs/learning-journal/problems-and-solutions.md#p-40--logout-from-a-tab-with-an-older-token-didnt-end-the-login)
 - **"Check, then act" in two Redis calls is a race** (8 of 8 sockets got past a limit of 5). Do it in one step:
   a Lua script. → [P-27](docs/learning-journal/problems-and-solutions.md#p-27--five-sockets-opened-at-once-let-eight-in)
 - **A long-lived connection must re-check its rights.** Sockets close at token expiry (4401) and within 60 s of an

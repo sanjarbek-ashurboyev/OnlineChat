@@ -38,13 +38,20 @@ jwt.decode(token, 'wrong-secret', algorithms=['HS256'])    # raises InvalidSigna
 - **SimpleJWT** issues tokens at `POST /api/v1/auth/login/`. There are two:
   - an **access** token (default life 5 min), sent with every request;
   - a **refresh** token (default 1 day), used only to get a new access token at `/auth/token/refresh/`.
-- **Refresh tokens work once, and logout ends them** (T-07, session 030,
-  [decision 014](../decisions/014-refresh-rotation-and-logout.md)):
-  - *Rotation:* every refresh answers with a new refresh token too, and the old one goes on a **blacklist**
-    (a database table, `token_blacklist`). A stolen refresh token stops working as soon as the real user refreshes.
-  - *Logout:* `POST /auth/logout/ {"refresh": ...}` blacklists the refresh token, so it can't make new access tokens.
-  - *Only refresh tokens are checked against the blacklist.* An access token stays valid until it expires
-    (≤ 5 min), and so does a socket opened with it. That's the price of not querying the database per request.
+- **Refresh tokens work once, and logout ends the login** (T-07, sessions 030 and 036,
+  [decisions 014](../decisions/014-refresh-rotation-and-logout.md) and [016](../decisions/016-login-sessions.md)):
+  - *A row per login:* `accounts.LoginSession`. Every refresh token of that login carries its id in the claim `sid`,
+    and the row stores the id (`jti`) of the one refresh token that may be used next.
+  - *Rotation:* every refresh answers with a new refresh token too. One `UPDATE` swaps the row's `refresh_jti` from
+    the presented token to the new one, but only if it still is the presented one. Two requests with one token: the
+    database lets one win; the other changes 0 rows and gets 401 (P-39). A stolen refresh token stops working as
+    soon as the real user refreshes.
+  - *Logout:* `POST /auth/logout/ {"refresh": ...}` marks the row ended. Any of the login's tokens will do, even an
+    older one a stale tab still holds (P-40).
+  - *Only refreshes and logouts read the row.* An access token stays valid until it expires (≤ 5 min), and so does
+    a socket opened with it. That's the price of not querying the database per request.
+  - Until session 036 this was SimpleJWT's **blacklist** (a table of spent tokens). It let one token be spent twice
+    at the same moment, and logout couldn't find a login's other tokens.
   - *In the browser,* one tab never spends the same refresh token twice (`state.renewal` is shared), and picks up
     a token another tab of the same account just saved (`renewTokens()` in `assets/app.js`).
 - **REST:** `accounts/authentication.py` `LastSeenJWTAuthentication` checks the `Authorization: Bearer …`
@@ -75,6 +82,10 @@ jwt.decode(token, 'wrong-secret', algorithms=['HS256'])    # raises InvalidSigna
 - **Long-lived access tokens.** Because JWTs can't be revoked, keep them short and refresh them.
 - **Turning on rotation without fixing the client.** With single-use refresh tokens, two requests that refresh at
   the same moment, or two tabs with their own copy, spend the same token twice, and the second one signs the user out.
+- **"Single use" checked in two steps on the server.** "Is it spent?" then "mark it spent" lets two requests that
+  arrive together both through (P-39). The mark must carry the check (`UPDATE ... WHERE jti = <presented>`).
+- **Revoking a token instead of the login.** With rotation a login has many tokens over time; logout has to end all
+  of them, whichever one the client still holds (P-40).
 - **Checking a token only when a long-lived connection opens.** A WebSocket can stay open for hours, so its
   token expires *during* the connection. Until session 020, ours stayed authorized forever.
 - **Confusing authentication with authorization.** A valid token proves who you are. You still have to

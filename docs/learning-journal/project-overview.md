@@ -83,7 +83,8 @@ Versions come from `requirements.txt`, compiled from `requirements.in` for Pytho
 
 ### `accounts/`: users and login
 - `models.py`: `User` replaces Django's username with `phone_number` (`USERNAME_FIELD`) and
-  adds `last_seen` and `avatar`.
+  adds `last_seen` and `avatar`. `LoginSession` is one row per login: the id of its one usable refresh token, and
+  whether it was logged out ([decision 016](decisions/016-login-sessions.md)).
 - `authentication.py`: `LastSeenJWTAuthentication` is SimpleJWT's authenticator plus a
   `last_seen` update, written at most once a minute (`TOUCH_INTERVAL`).
 - `signals.py`: deletes an avatar file once no account points to it (replaced, removed, or the
@@ -147,7 +148,8 @@ A single page in plain JavaScript (no framework):
 |---|---|---|
 | `POST /api/v1/auth/register/` | `RegisterCreateAPIView` | Create an account |
 | `POST /api/v1/auth/login/` | `CustomTokenObtainPairView` | Phone + password → access and refresh tokens |
-| `POST /api/v1/auth/token/refresh/` | `CustomTokenRefreshView` | Refresh token → new access token |
+| `POST /api/v1/auth/token/refresh/` | `CustomTokenRefreshView` | Refresh token → new access and refresh tokens (each refresh token works once) |
+| `POST /api/v1/auth/logout/` | `LogoutView` | Any refresh token of the login → the login ends |
 | `GET/PATCH /api/v1/auth/profile/` | `ProfileAPIView` | Your profile |
 | `GET /api/v1/users/lookup/` | `UserLookupAPIView` | Find a user (throttled) |
 | `GET /api/v1/users/<id>/` | `PublicUserAPIView` | Someone's public profile |

@@ -1,5 +1,7 @@
 import shutil
 import tempfile
+import threading
+import unittest
 from datetime import timedelta
 from io import BytesIO
 from unittest import mock
@@ -9,7 +11,8 @@ from django.conf import settings
 from django.core.cache import cache
 from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import SimpleTestCase, TestCase, override_settings
+from django.db import connection
+from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from PIL import Image
 from redis.exceptions import ConnectionError as RedisConnectionError
@@ -17,7 +20,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIClient
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.tokens import AccessToken
+from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
 from accounts.models import User
 from accounts.serializers import RegisterSerializer
@@ -172,6 +175,61 @@ class RefreshRotationAndLogoutTests(TestCase):
         other = APIClient().post('/api/v1/auth/login/', {'phone_number': phone(1), 'password': PASSWORD}).data
         APIClient().post(self.LOGOUT_URL, {'refresh': self.tokens['refresh']})
         self.assertEqual(self.refresh(other['refresh']).status_code, 200, 'another device stays signed in')
+
+    def test_logout_with_an_older_token_of_the_same_login_ends_it(self):
+        # Codex review of #40: tab A renewed R0 -> R1; tab B still held R0 and signed out with it. That has to end
+        # the login, or R1 keeps working after the user pressed "Log out".
+        renewed = self.refresh(self.tokens['refresh']).data['refresh']
+        response = APIClient().post(self.LOGOUT_URL, {'refresh': self.tokens['refresh']})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.refresh(renewed).status_code, 401)
+
+    def test_a_token_from_before_login_sessions_is_refused(self):
+        # Issued before this change: no `sid`, so no session can say it's still the current one. Sign in again.
+        self.assertEqual(self.refresh(str(RefreshToken.for_user(self.user))).status_code, 401)
+
+
+class ConcurrentRefreshTests(TransactionTestCase):
+    """Codex review of #40: one refresh token, two requests at the same moment, must give one new token, not two."""
+    REFRESH_URL = '/api/v1/auth/token/refresh/'
+
+    def setUp(self):
+        if connection.vendor != 'postgresql':
+            raise unittest.SkipTest('two requests at once need a database that two threads can share')
+        cache.clear()
+        self.addCleanup(cache.clear)
+        make_user()
+        self.token = APIClient().post('/api/v1/auth/login/', {'phone_number': phone(1), 'password': PASSWORD}).data['refresh']
+
+    def test_two_requests_with_one_token_get_one_new_token(self):
+        # Hold both requests just after their token passed every check, so neither has spent it yet: the moment a
+        # thief's copy and the real tab can both be in. Without the hold this race is real but rarely hit.
+        both_checked = threading.Barrier(2)
+        original = RefreshToken.access_token
+
+        def access_token_once_both_are_checked(token):
+            try:
+                both_checked.wait(timeout=2)
+            except threading.BrokenBarrierError:
+                pass  # only one request got this far: nothing to line up
+            return original.fget(token)
+
+        statuses = []
+
+        def redeem():
+            try:
+                statuses.append(APIClient().post(self.REFRESH_URL, {'refresh': self.token}).status_code)
+            finally:
+                connection.close()
+
+        with mock.patch.object(RefreshToken, 'access_token', property(access_token_once_both_are_checked)):
+            threads = [threading.Thread(target=redeem) for _ in range(2)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+
+        self.assertEqual(sorted(statuses), [200, 401])
 
 
 class AuthThrottleTests(TestCase):

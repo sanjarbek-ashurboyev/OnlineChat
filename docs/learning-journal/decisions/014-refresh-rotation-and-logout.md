@@ -1,6 +1,8 @@
 # 014 · Refresh tokens rotate; logout blacklists; tabs share renewals
 
-- **Date:** 2026-10-13 · **Status:** Accepted (T-07, session 030)
+- **Date:** 2026-10-13 · **Status:** Accepted (T-07, session 030). **Updated:** the blacklist let one token be spent
+  twice at once and couldn't end a login from a stale tab; [decision 016](016-login-sessions.md) replaces it with a
+  row per login. The browser part below still holds.
 
 ## Problem
 Audit SEC-7: a refresh token lived for a day and could be used any number of times. Logging out only deleted it

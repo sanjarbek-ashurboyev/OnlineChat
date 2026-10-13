@@ -1,6 +1,6 @@
 # Progress
 
-*Updated: 2026-10-13 (session 034).*
+*Updated: 2026-10-13 (session 036).*
 
 **Status words:** **Done** = code written, tests or checks run and passing, committed.
 **Partial** = some of the acceptance criteria are met. **Blocked** = waiting on something outside
@@ -51,6 +51,7 @@ were already fixed on `main` before this journal started.
 | T-13 Connection pool (psycopg 3, PERF-2): `OPTIONS['pool']` 2/10/5 s | **Done** on `t-13-db-pool` (stacked on #41) | Pool test failed first (20 connections for 20 calls); one DB call p95 7.6 → 0.67 ms; load test same Mac, same day: healthy at **500 → 2,000+** (2,000: msg p95 86 ms, p99 374 ms); Postgres sessions per run 33,566 → 227; `make test` 163 OK (16 skipped); real Postgres + Redis with browser tests required 198 OK; Ruff clean | [session 032](sessions/032-t13-connection-pool.md) |
 | Channel layer waits for a Redis connection (T-02 follow-up, `chats/layers.py`, `BlockingConnectionPool` 100 / 5 s) | **Done** on `t-02-redis-pool-wait` | Burst test failed first (`MaxConnectionsError`); load test to 3,000 (3,000 seeded): `group_discard` errors 1,214 → 0, ceiling unchanged (healthy 2,000, fail 2,500); 3,000-socket burst: dead group entries 2,881 → 0, clean in ~3 s; `make test` 164 OK (17 skipped); real stack 199 OK; Ruff clean | [session 033](sessions/033-redis-pool-waits.md) |
 | T-15 `last_seen` at most once per 60 s per socket (PERF-3) | **Done** on `t-15-last-seen-interval`, PR open | Tests: 1 failure + 1 error on the old consumer, then pass; Postgres counters per message sent: transactions 16.9 → 14.4, rows updated 4.5 → 2.0; ceiling unchanged within noise (healthy 2,000, fail 2,500; P-37); `make test` 167 OK (17 skipped); real stack 202 OK; Ruff clean | [session 034](sessions/034-t15-last-seen-interval.md) |
+| Codex review of #38–#43, both High: one refresh token can't be spent twice at once; logout from a stale tab (or during another tab's refresh) ends the login. `LoginSession` row per login, swap in one `UPDATE`; blacklist app removed ([decision 016](decisions/016-login-sessions.md)) | **Done** on `t-07-refresh-single-use`, PR open | Reproduced on `main`: parallel refreshes `[200, 200]` (20/20 against real Daphne); stale-tab logout 401 with R1 still valid (server test and 2 two-tab browser tests). All 4 fail on the old code, pass now; `make test` 170 run, OK (18 skipped); real stack with browser tests required 207 OK; no missing migrations; Ruff clean | [session 036](sessions/036-login-sessions.md) |
 
 Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), and 50/50 tests pass locally.
 
@@ -111,6 +112,7 @@ That's self-reported; nothing has been tested yet, so every concept starts at
 | HTTP vs WebSocket | [guide](concepts/http-and-websockets.md) | Explained | Sessions 001, 005 | Open the app, then the browser DevTools → Network → WS. Watch frames as you send a message. Write down every frame type you see. |
 | Channels, consumers, groups, Redis channel layer | [guide](concepts/django-channels-and-redis.md) | Explained | Session 001 | Without looking, draw the path of one message from browser A to browser B, naming the functions in `chats/consumers.py`. |
 | JWT and signing | [guide](concepts/authentication-and-jwt.md) | Explained | Session 003 | Paste an access token into a JWT decoder (offline tool or `python -c`). Explain each claim. Then change one character of the signature and explain why the server rejects it. |
+| Race conditions (check-then-act), compare-and-swap, login sessions | [guide](concepts/authentication-and-jwt.md) | Explained | Session 036 | Run `ConcurrentRefreshTests` and watch it pass. Then, in a scratch copy, replace the `.update(...)` with a `filter(...).exists()` check followed by a separate `.update()`, predict what the test shows, and run it. Explain the result. |
 | Configuration, secrets, DEBUG, HTTPS settings | [guide](concepts/configuration-and-secrets.md) | Explained | Session 003 | Start the server with `DJANGO_DEBUG=0` and no `DJANGO_ALLOWED_HOSTS`. Predict the error first, then check. |
 | Dependency management | [guide](concepts/dependency-management.md) | Explained | Session 004 | Add a package to `requirements.in`, run `pip-compile`, and read the diff. Revert afterwards. |
 | Git branches, merge, rebase | [guide](concepts/git-branches-merge-rebase.md) | Explained | Sessions 002, 003 | In a throwaway repo, make a fast-forward merge, a rebase and a `--force-with-lease` push to a local bare remote. |
