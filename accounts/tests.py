@@ -376,6 +376,27 @@ class AuthThrottleTests(TestCase):
             self.assertEqual(refresh().status_code, 401)
         self.assertEqual(refresh().status_code, 429)
 
+    def test_refreshes_from_the_same_ip_do_not_block_logout(self):
+        # Codex review of #40: behind a shared NAT, other people's 30 refreshes a minute made logout answer 429,
+        # and the browser signed out locally while the refresh token stayed valid.
+        make_user()
+        token = APIClient().post(self.LOGIN, {'phone_number': phone(1), 'password': PASSWORD}).data['refresh']
+        for _ in range(30):
+            APIClient().post('/api/v1/auth/token/refresh/', {'refresh': 'garbage'}, REMOTE_ADDR='10.0.0.1')
+
+        logout = APIClient().post('/api/v1/auth/logout/', {'refresh': token}, REMOTE_ADDR='10.0.0.1')
+        self.assertEqual(logout.status_code, 200)
+        renewed = APIClient().post('/api/v1/auth/token/refresh/', {'refresh': token}, REMOTE_ADDR='10.0.0.2')
+        self.assertEqual(renewed.status_code, 401)
+
+    def test_one_ip_can_log_out_60_times_a_minute(self):
+        def logout():
+            return APIClient().post('/api/v1/auth/logout/', {'refresh': 'garbage'}, REMOTE_ADDR='10.0.0.1')
+
+        for _ in range(60):
+            self.assertEqual(logout().status_code, 401)
+        self.assertEqual(logout().status_code, 429)
+
 
 class ProfileTests(TestCase):
     URL = '/api/v1/auth/profile/'

@@ -51,7 +51,8 @@ class LogoutView(TokenViewBase):
     """Ends the login. Needs no access token: it may have expired, and the refresh token is the proof."""
     serializer_class = LogoutSerializer
     throttle_classes = [ScopedRateThrottle]
-    throttle_scope = 'refresh'
+    # Its own counter: other people's refreshes behind the same NAT must not block anyone's logout.
+    throttle_scope = 'logout'
 
 
 @extend_schema(tags=['auth'])

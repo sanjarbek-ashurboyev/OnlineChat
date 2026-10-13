@@ -721,6 +721,12 @@ class RefreshRotationTests(BrowserTestCase):
         expect(tab.locator('#conn-state.is-open')).to_be_attached()
         return tab
 
+    def logout_answers(self, page):
+        answers = []
+        page.on('response', lambda response: answers.append(response.status)
+                if response.url.endswith('/auth/logout/') else None)
+        return answers
+
     def still_renews(self, refresh):
         return APIClient().post('/api/v1/auth/token/refresh/', {'refresh': refresh}).status_code == 200
 
@@ -836,3 +842,36 @@ class RefreshRotationTests(BrowserTestCase):
 
         self.assertEqual(logouts, [])
         self.assertTrue(self.still_renews(answer.json()['refresh']), "the winner's login was ended")
+
+    def test_a_logout_the_server_refused_is_sent_again(self):
+        # Codex review of #40: a 429 on logout was ignored; the tab signed out, the refresh token stayed valid.
+        page = self.open_app(refresh=True)
+        token = page.evaluate('state.refresh')
+        answers = self.logout_answers(page)
+        refused = []
+
+        def refuse_once(route):
+            if refused:
+                route.continue_()
+            else:
+                refused.append(route)
+                route.fulfill(status=429, headers={'Retry-After': '1'}, json={'detail': 'Request was throttled.'})
+
+        page.route('**/api/v1/auth/logout/', refuse_once)
+        page.locator('#logout').click()
+        self.wait_until(page, lambda: 200 in answers, timeout=10)
+        self.assertEqual(answers[0], 429)
+        self.assertFalse(self.still_renews(token))
+
+    def test_a_logout_that_never_reached_the_server_is_sent_on_the_next_visit(self):
+        page = self.open_app(refresh=True)
+        token = page.evaluate('state.refresh')
+        page.route('**/api/v1/auth/logout/', lambda route: route.abort())
+        page.locator('#logout').click()
+        expect(page.locator('#auth')).to_be_visible()
+        page.unroute('**/api/v1/auth/logout/')
+
+        answers = self.logout_answers(page)
+        page.reload()
+        self.wait_until(page, lambda: 200 in answers, timeout=10)
+        self.assertFalse(self.still_renews(token))

@@ -6,6 +6,7 @@ const PONG_GRACE_MS = 10000;    // no frame for PING_MS + this: the connection i
 const ACK_TIMEOUT_MS = 10000;   // no echo by then: look in the history (Codex audit H-06)
 const START_RETRY_MS = 5000;    // the server couldn't be reached at startup (Codex audit M-12)
 const REFRESH_TIMEOUT_MS = 10000;   // a renewal holds the lock all tabs share, so it must end (Codex review of #46)
+const REVOKE_RETRY_MAX_MS = 60000;  // a logout the server didn't take is retried, waiting at most this long
 const AVATAR_FALLBACK =
   'data:image/svg+xml;utf8,' + encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">' +
@@ -807,17 +808,45 @@ function renderMe() {
   $('me-phone').textContent = state.me.phone_number;
 }
 
-function logout() {
-  // End this login on the server too (T-07). Not awaited: signing out must work offline, and the
-  // answer changes nothing here.
-  if (state.refresh) {
-    fetch(`${API}/auth/logout/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh: state.refresh }),
-      keepalive: true,
-    }).catch(() => {});
+/** Refresh tokens whose logout the server hasn't confirmed yet. Kept in localStorage, so a reload or the next
+ *  visit finishes the job: this browser has already forgotten them, and only the server can still stop them. */
+function pendingRevokes() {
+  try {
+    return JSON.parse(localStorage.getItem('pendingRevokes')) || [];
+  } catch {
+    return [];
   }
+}
+
+function setPendingRevoke(refresh, pending) {
+  const others = pendingRevokes().filter((token) => token !== refresh);
+  localStorage.setItem('pendingRevokes', JSON.stringify(pending ? [...others, refresh] : others));
+}
+
+/** End a login on the server (T-07), retrying until the server answers. A 429 or a network error must not
+ *  leave the token working (Codex review of #40). Not tied to `state.session`: whoever signs in next, the
+ *  old login still has to end. */
+function revokeLogin(refresh, delay = 1000) {
+  setPendingRevoke(refresh, true);
+  const retry = (wait) => setTimeout(() => revokeLogin(refresh, Math.min(delay * 2, REVOKE_RETRY_MAX_MS)), wait);
+  fetch(`${API}/auth/logout/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh }),
+    keepalive: true,
+  }).then((res) => {
+    // 400/401: the token is dead already (expired, or that login ended). Nothing is left to revoke.
+    if (res.ok || res.status === 400 || res.status === 401) {
+      setPendingRevoke(refresh, false);
+      return;
+    }
+    retry(Math.max(Number(res.headers.get('Retry-After')) * 1000 || 0, delay));
+  }, () => retry(delay));
+}
+
+function logout() {
+  // Not awaited: signing out must work offline. revokeLogin keeps trying in the background.
+  if (state.refresh) revokeLogin(state.refresh);
   signOut();
 }
 
@@ -887,4 +916,5 @@ async function start() {
 // online dots, which nothing pushes to us.
 setInterval(() => { if (state.me) loadChats().catch(() => {}); }, 45000);
 
+pendingRevokes().forEach((refresh) => revokeLogin(refresh));
 if (state.access) start();
