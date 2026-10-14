@@ -35,11 +35,12 @@
 **Not done:**
 - Nothing deletes old `LoginSession` rows yet. It's one row per login (not per refresh, like the blacklist was), so
   it grows slowly; a daily "delete ended or expired" job belongs with the deploy (T-10).
-- The old `token_blacklist_*` tables stay in existing databases (removing an app doesn't drop them). Harmless; drop
-  them by hand if wanted.
+- ~~The old `token_blacklist_*` tables stay in existing databases (removing an app doesn't drop them). Harmless; drop
+  them by hand if wanted.~~ Not harmless: they made deleting a user fail. Fixed in the follow-up below (P-42).
 - Everyone signed in before this change has to sign in again once (their tokens have no `sid`).
 - Access tokens still live up to 5 minutes after logout (unchanged, decision 014).
-- The other three findings of the review (logout throttle, cross-tab lock) are separate branches.
+- The other findings of the review: the logout throttle is a separate branch; the cross-tab lock came with the
+  follow-up below.
 
 ## Concepts
 
@@ -163,3 +164,181 @@ def renew_but_hold_the_answer(route):
 ## Next steps
 - Logout shares the refresh throttle (finding: logout blocked by 429), then the cross-tab refresh lock.
 - With T-10: a daily job deleting ended and expired `LoginSession` rows.
+
+---
+
+# Follow-up · Codex review of PR #46, round 1
+
+- **Date:** 2026-10-14 · **Branch:** `t-07-refresh-single-use` (same PR, #46)
+- **Files:** `assets/app.js`, `accounts/migrations/0004_drop_token_blacklist_tables.py`, `accounts/tests.py`,
+  `chats/test_browser.py`, `docs/scaling/03-operations.md`, docs
+- **Objective:** Codex confirmed the fixes above, then reproduced two new Medium bugs, both caused by this PR, and
+  asked for a deploy note. Reproduce each first, then fix.
+
+## What was done
+1. **Reproduced "a tab that loses a refresh race ends the winner's login"** with two browser tests (two tabs of one
+   browser, both holding R0). Tab A's refresh reaches the server (R0 → R1) but the test holds its answer; then tab B
+   needs a new token too (`state.access = 'expired'; start()`, what a page load does), and the server refuses R0.
+   - On the old code: B sent `POST /auth/logout/`, and the login ended, R1 included. Failures:
+     `401 != 3` (B signed out) and `[<Request .../auth/logout/>] != []`.
+2. **Fixed it in `assets/app.js`**, in two parts:
+   - Renewals take turns across tabs under a Web Lock, and a tab first takes a newer token another tab saved
+     (`adoptStoredToken()`). So B waits while A renews, then renews with A's R1 and stays signed in.
+   - A refused refresh token now calls `signOut()` (this tab only). Only the "Log out" button calls `logout()`, which
+     also ends the login on the server. This covers browsers without `navigator.locks`, where the race can still be
+     lost: B signs itself out, A keeps working.
+3. **Reproduced "deleting a user fails"** two ways:
+   - On a copy of the dev database (made with `CREATE DATABASE ... TEMPLATE onlinechat`; it still had the real
+     blacklist tables from `main`, with 100 old rows): one row pointing at a user, then `user.delete()` →
+     `IntegrityError ... violates foreign key constraint "token_blacklist_outs_user_id_83bc629a_fk_accounts_"`.
+     (A first try on the dev database itself ran in a transaction that was rolled back, so nothing changed there.)
+   - Test `OldBlacklistTablesTests`: builds the two old tables by hand with the same foreign keys, adds a blacklisted
+     token of a user, deletes the user. Failed on SQLite and on Postgres with the same `IntegrityError`.
+4. **Fixed it with migration `accounts.0004`**: drops both tables if they exist and forgets the app's migrations.
+   Then on a new copy of the dev database: migrate → the user deletes, no blacklist tables, no migration records.
+5. **Rehearsed a rollback** on a copy of the dev database, with `main`'s code in a temporary worktree: logged in,
+   refreshed and logged out with the new code; went back (`migrate accounts 0002`, then the old code's `migrate`,
+   which built the blacklist tables again, empty); the old code then accepted both the rotated-away token and the
+   logged-out one (**200, 200**). With a new `DJANGO_SECRET_KEY`: **401, 401**. Rolling forward again re-applied 0003
+   and 0004. Written down as the rollback steps under T-07 in `docs/scaling/03-operations.md`.
+6. **Results:** the 2 browser tests and the migration test fail on the old code and pass now. `make test`
+   **171 run, OK (skipped=18)** (210 found); real Postgres + Redis with `REQUIRE_BROWSER_TESTS=True` **210 OK**
+   (36 browser tests); `makemigrations --check` no changes; Ruff 0.16.10 clean.
+
+**Not done:**
+- The losing tab still signs itself out in browsers without `navigator.locks` (old browsers, or plain `http://` on
+  an address other than `localhost`, where the browser doesn't offer it). The login survives; that tab signs in again.
+- The test builds the old tables by hand, not with SimpleJWT's own migrations: once the app is out of
+  `INSTALLED_APPS`, SimpleJWT makes its models abstract, so they can't be created. The real tables were covered by the
+  dev-database copy, by hand, not in CI.
+- The logout-throttle branch (`t-07-logout-throttle`) also changes `logout()` in `app.js`; it will need a rebase onto
+  this.
+
+## Concepts
+
+### Web Locks (`navigator.locks`)
+- **Simple definition:** a named lock that all tabs of one site share. `navigator.locks.request('refresh-token', fn)`
+  waits until no other tab holds `refresh-token`, runs `fn`, and releases the lock when `fn`'s promise settles.
+- **Why here:** `localStorage` is shared between tabs, but each tab renews on its own. Without turns, two tabs can
+  send the same refresh token at once, and one is refused.
+- **Catch:** the lock is released only when `fn`'s promise settles. Our `dropped()` (a promise that never settles,
+  used to drop answers after logout) must never be returned inside the lock, or no tab could renew again. So
+  `spendRefreshToken()` returns `false` instead, and `renewTokens()` drops the answer *after* the lock.
+- **Where it's missing:** only "secure contexts" have it: `https://`, or `http://localhost`.
+
+### Removing a Django app doesn't remove its tables
+- **Simple definition:** `INSTALLED_APPS` tells Django which models exist. Taking an app out of it changes what
+  Django *knows*, not what the *database* has.
+- **Why it broke a delete:** Django deletes a user's related rows itself (in Python) before the user, but only for
+  models it knows. The forgotten table still had a foreign key to `accounts_user`, so Postgres refused the delete.
+- **How it's cleaned up:** a `RunPython` migration (a migration that runs a Python function) drops the tables and
+  deletes the app's rows from `django_migrations`, Django's list of applied migrations.
+
+## Walkthrough
+
+`assets/app.js`, renewing:
+```js
+async function renewTokens() {
+  const session = state.session;
+  const work = () => (session === state.session ? spendRefreshToken() : false);
+  const renewed = await (navigator.locks ? navigator.locks.request('refresh-token', work) : work());
+  if (session !== state.session) return dropped();
+  return renewed;
+}
+```
+- `work` checks the session again *inside* the lock: the user may have signed out while this tab waited for it.
+- Without `navigator.locks` it just runs `work()`, as before.
+- `dropped()` is outside the lock (see the catch above).
+
+```js
+async function spendRefreshToken() {
+  adoptStoredToken();
+  if (!state.refresh) return false;
+  ...
+  if (res.status === 400 || res.status === 401) {
+    if (session === state.session && adoptStoredToken()) return spendRefreshToken();
+    return false;
+  }
+```
+- `adoptStoredToken()` first: the tab before us may have saved a newer token while we waited. It's only taken if it
+  belongs to the same user (`tokenUser()`), as before.
+- After a refusal it tries once more with a newer stored token: without the lock, another tab may still win.
+
+`assets/app.js`, the two ways out:
+```js
+function logout() {          // the "Log out" button
+  if (state.refresh) fetch(`${API}/auth/logout/`, { ... });
+  signOut();
+}
+```
+`signOut()` is everything `logout()` did before, minus the request. `start()` (on a 401) and the socket's 4401
+handler (when the renewal is refused) now call `signOut()`.
+
+`accounts/migrations/0004_drop_token_blacklist_tables.py`:
+```python
+def drop_blacklist_tables(apps, schema_editor):
+    existing = set(schema_editor.connection.introspection.table_names())
+    for table in TABLES:
+        if table in existing:
+            schema_editor.execute(f'DROP TABLE {schema_editor.quote_name(table)}')
+    MigrationRecorder(schema_editor.connection).migration_qs.filter(app='token_blacklist').delete()
+```
+- `TABLES` lists `blacklistedtoken` first: it points at `outstandingtoken`, so it has to go first.
+- `if table in existing`: new databases (CI, a fresh install) never had the tables.
+- Deleting the `django_migrations` rows matters for a rollback: the old code's `migrate` then sees the blacklist's
+  migrations as not applied and builds the tables again. Backwards, the migration does nothing (`RunPython.noop`).
+
+## Problems
+- **A tab that lost a refresh race ended the other tab's login** → [P-43](../problems-and-solutions.md#p-43--a-tab-that-lost-a-refresh-race-ended-the-other-tabs-login).
+- **Deleting a user failed after the blacklist app was removed** → [P-42](../problems-and-solutions.md#p-42--after-the-blacklist-app-was-removed-deleting-a-user-failed).
+- **The first test tried to install the blacklist app for a moment** (`override_settings(INSTALLED_APPS=...)`) to
+  build the real tables: `ImproperlyConfigured: The model OutstandingToken is abstract`. SimpleJWT decides "abstract"
+  once, when its models module is first imported. Switched to building the tables by hand.
+- **The rollback rehearsal first printed nothing for the token checks.** The script's `APIClient()` used the host
+  `testserver`, which `ALLOWED_HOSTS` refuses (an HTML 400, not a DRF answer). `APIClient(SERVER_NAME='localhost')`
+  fixed it. Also, `main`'s code in a fresh worktree had no `.env`; it was linked in for the rehearsal and removed after.
+
+## Decisions
+- Who may end a login: only the "Log out" button; a refused refresh token signs out one tab. Added to
+  [decision 016](../decisions/016-login-sessions.md#update-codex-review-of-46-who-may-end-a-login).
+
+## What I should remember
+- Making an action stronger changes every place that calls it. `logout()` started ending every tab's login, and two
+  of its three callers were automatic.
+- A Web Lock is held until the callback's promise settles. Never return a promise that never settles inside it.
+- Removing an app from `INSTALLED_APPS` leaves its tables. Clean up with a migration, and test the upgrade on a
+  database the previous release migrated.
+- A rollback can need more than the old code: here, a migration back and a new signing key. Rehearse it.
+
+## Review questions
+1. In the lost race, why was tab B's refresh token refused, and why did B's sign-out end A's login too?
+2. What does `navigator.locks.request('refresh-token', work)` guarantee, and when is the lock released?
+3. Why does `spendRefreshToken()` return `false` instead of `dropped()` when the user signed out meanwhile?
+4. Why doesn't the automatic sign-out end the login on the server, even though a refused token could mean theft?
+5. Why did every test pass while deleting a user failed on a real database?
+6. Why does migration 0004 also delete the `token_blacklist` rows from `django_migrations`?
+7. After rolling back to the blacklist code, why must `DJANGO_SECRET_KEY` change?
+
+<details><summary>Answer key</summary>
+
+1. A's refresh had already swapped R0 for R1 on the server, so R0 was spent. B signed out with `logout()`, which sends
+   R0 to `/auth/logout/`; since P-40 that ends the whole login, whichever token is sent, and R1 belongs to that login.
+2. Only one tab of the site runs a callback for `refresh-token` at a time; the others wait. The lock is released when
+   the promise returned by `work` settles (resolves or rejects).
+3. `dropped()` never settles, so the lock would never be released, and no tab could renew again. The answer is dropped
+   in `renewTokens()`, after the lock.
+4. A refused token looks the same whether a thief or another tab of the same browser spent it, so ending the login
+   could throw the user out of their other tab. Before this PR the automatic logout only blacklisted an already-spent
+   token, which did nothing, so nothing is lost.
+5. Test databases are built fresh from the current migrations, and the blacklist app isn't installed anymore, so they
+   never had its tables. Only databases migrated by the previous release have them.
+6. So that the old code's `migrate`, after a rollback, sees the blacklist's migrations as not applied and builds its
+   tables again. Without that, the old code would crash on missing tables.
+7. The old code checks only its blacklist, which is empty after a rollback, so it accepts every refresh token the new
+   code retired: logged-out logins and every rotated-away token. A new key makes every existing token invalid.
+</details>
+
+## Next steps
+- Codex review round 2 of PR #46; the assistant merges after it.
+- Rebase `t-07-logout-throttle` onto this once merged (both change `logout()` in `app.js`).
+- With T-10: the daily delete of ended and expired `LoginSession` rows.

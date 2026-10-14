@@ -627,3 +627,34 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
 - **Fix:** every refresh token of a login carries the login's id (`sid`); logout ends the session row, whichever of
   its tokens it gets.
 - **Lesson:** revoke the thing the user means ("this login"), not the piece of it the client happens to hold.
+
+## P-42 · After the blacklist app was removed, deleting a user failed
+
+- **Session:** [036](sessions/036-login-sessions.md) (follow-up) · found by Codex's review of PR #46
+- **Observed:** on a copy of the dev database (migrated on `main`, so with SimpleJWT's blacklist tables), with PR #46's
+  code: deleting a user who had a row in `token_blacklist_outstandingtoken` failed with `IntegrityError: update or
+  delete on table "accounts_user" violates foreign key constraint ... on table "token_blacklist_outstandingtoken"`.
+  Every test passed: test databases are built fresh, without the app, so they never had those tables.
+- **Root cause (Confirmed):** removing an app from `INSTALLED_APPS` doesn't touch its tables. Django deletes related
+  rows itself (in Python) before deleting a user, but only for models it knows. With the app gone it didn't know
+  these, and the database's foreign key refused the delete.
+- **Fix:** migration `accounts/migrations/0004_drop_token_blacklist_tables.py` drops both tables if they exist and
+  deletes the app's rows from `django_migrations`, so a rollback's `migrate` would build them again. Test
+  `OldBlacklistTablesTests` builds the old tables with a user's row, fails on the old code (SQLite and Postgres), passes
+  now; the migration was also run on a copy of the dev database with a real row.
+- **Lesson:** removing an app is a migration too. Test upgrades on a database migrated by the *previous* release.
+
+## P-43 · A tab that lost a refresh race ended the other tab's login
+
+- **Session:** [036](sessions/036-login-sessions.md) (follow-up) · found by Codex's review of PR #46
+- **Observed:** two tabs hold R0 and both need a new token. The server swaps R0 → R1 for tab A; tab B's R0 is refused
+  before A has saved R1. B signed out through `logout()`, which sends `POST /auth/logout/` with R0, and since P-40 that
+  ends the whole login, so A's R1 died too. Browser test: B sent the logout request (`[<Request .../auth/logout/>] != []`).
+- **Root cause (Confirmed):** two things. Tabs renewed independently, so one could lose; and the automatic sign-out
+  after a refused token used the same `logout()` as the button, which since P-40 ends the login for every tab.
+- **Fix:** `assets/app.js`. Tabs renew one at a time under a Web Lock (`navigator.locks.request('refresh-token', …)`),
+  and each first takes a newer token another tab saved (`adoptStoredToken()`). A refused token calls `signOut()`,
+  which forgets the tokens in this tab only; only the button calls `logout()`. Two browser tests, both failing on the
+  old code.
+- **Lesson:** a fix that makes an action stronger (logout now ends *every* tab) changes every caller of it. Check who
+  else calls it, and for what reason.

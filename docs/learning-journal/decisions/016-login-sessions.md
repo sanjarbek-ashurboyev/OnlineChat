@@ -32,7 +32,23 @@ With SimpleJWT's blacklist (decision 014):
 - **Access tokens still work up to 5 minutes after logout**, like before. The `sid` is in access tokens too, so a
   per-request check would be possible later, at one query per request.
 - **An old stolen refresh token can end the login** (sign the user out). It can't renew it.
-- The old `token_blacklist_*` tables stay in databases that had them; drop them by hand.
+- ~~The old `token_blacklist_*` tables stay in databases that had them; drop them by hand.~~ Wrong: their rows
+  made deleting a user fail. Migration `accounts.0004` drops them (P-42).
+- **Rolling back to the blacklist code needs a new `DJANGO_SECRET_KEY`**: the old code would accept every token this
+  one retired. Steps in `docs/scaling/03-operations.md` (T-07).
+
+## Update (Codex review of #46): who may end a login
+A tab that lost a refresh race to another tab (P-43) signed out with `logout()`, which ends the login on the server,
+so the winner's new token died too. Options:
+1. **Revoke whenever a refresh is refused** (as before). A refused token *could* mean a thief spent it first, and
+   revoking would throw the thief out. But a refused token looks the same when another tab of the same browser spent
+   it, and then it throws out the user. We can't tell the two apart.
+2. **Only the "Log out" button ends the login on the server; a refused refresh only signs that tab out.**
+
+**Chosen: 2**, plus a cross-tab lock (`navigator.locks`) so the same browser's tabs don't race at all. Before this
+PR a refused token's automatic logout blacklisted a token that was already spent, which did nothing, so 2 gives up
+nothing we had. Theft detection ("a spent token came back: end the login") would need the server to tell *which*
+token came back, and is not planned.
 
 ## When another option is better
 - **4** if we need "sign out everywhere *now*", access tokens included (a compromised account).

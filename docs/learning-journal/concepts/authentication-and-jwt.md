@@ -54,6 +54,12 @@ jwt.decode(token, 'wrong-secret', algorithms=['HS256'])    # raises InvalidSigna
     at the same moment, and logout couldn't find a login's other tokens.
   - *In the browser,* one tab never spends the same refresh token twice (`state.renewal` is shared), and picks up
     a token another tab of the same account just saved (`renewTokens()` in `assets/app.js`).
+  - *Across tabs,* renewals take turns under a **Web Lock** (`navigator.locks.request('refresh-token', fn)`): a lock
+    the browser shares between all tabs of one site. A tab that waited first takes the token the tab before it saved
+    (`adoptStoredToken()`), so it never spends one that's already spent (P-43, session 036).
+  - *Only the "Log out" button ends the login* (`logout()`). When the server refuses a tab's refresh token, the tab
+    just forgets its tokens (`signOut()`): another tab may have spent that token a moment ago, and its login must
+    live on.
 - **REST:** `accounts/authentication.py` `LastSeenJWTAuthentication` checks the `Authorization: Bearer …`
   header, and also updates `last_seen` at most once a minute.
 - **WebSocket:** `chats/middleware.py` `user_from_token()` checks `?token=`. A bad token makes the user
@@ -86,6 +92,11 @@ jwt.decode(token, 'wrong-secret', algorithms=['HS256'])    # raises InvalidSigna
   arrive together both through (P-39). The mark must carry the check (`UPDATE ... WHERE jti = <presented>`).
 - **Revoking a token instead of the login.** With rotation a login has many tokens over time; logout has to end all
   of them, whichever one the client still holds (P-40).
+- **Ending the login because a refresh was refused.** Once logout ends every tab's login, a tab that merely lost a
+  refresh race to its neighbour would sign both out (P-43). Only the user's own "Log out" should end it.
+- **A lock callback that never finishes.** A Web Lock is held until the callback's promise settles. Our `dropped()`
+  promise never settles, so it must stay *outside* the lock, or one signed-out tab would block every other tab's
+  renewals forever.
 - **Checking a token only when a long-lived connection opens.** A WebSocket can stay open for hours, so its
   token expires *during* the connection. Until session 020, ours stayed authorized forever.
 - **Confusing authentication with authorization.** A valid token proves who you are. You still have to

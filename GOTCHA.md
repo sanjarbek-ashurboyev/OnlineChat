@@ -135,6 +135,10 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
   just gets the first one's row back. A refresh token was spent twice this way. Put the condition in the `UPDATE`'s
   `WHERE` and read the row count. → [P-39](docs/learning-journal/problems-and-solutions.md#p-39--one-refresh-token-two-parallel-requests-two-new-tokens)
 - **With rotating tokens, revoke the login, not a token.** A stale tab's older token must still end it. → [P-40](docs/learning-journal/problems-and-solutions.md#p-40--logout-from-a-tab-with-an-older-token-didnt-end-the-login)
+- **A refused refresh token is no reason to end the login:** another tab may have just renewed it. Only the "Log out"
+  button calls `logout()`; automatic sign-outs call `signOut()`. → [P-43](docs/learning-journal/problems-and-solutions.md#p-43--a-tab-that-lost-a-refresh-race-ended-the-other-tabs-login)
+- **Removing an app leaves its tables, and their foreign keys still block deletes.** Drop them in a migration, and
+  test upgrades on a database the previous release migrated: fresh test databases never have them. → [P-42](docs/learning-journal/problems-and-solutions.md#p-42--after-the-blacklist-app-was-removed-deleting-a-user-failed)
 - **"Check, then act" in two Redis calls is a race** (8 of 8 sockets got past a limit of 5). Do it in one step:
   a Lua script. → [P-27](docs/learning-journal/problems-and-solutions.md#p-27--five-sockets-opened-at-once-let-eight-in)
 - **A long-lived connection must re-check its rights.** Sockets close at token expiry (4401) and within 60 s of an

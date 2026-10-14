@@ -113,7 +113,9 @@ Versions come from `requirements.txt`, compiled from `requirements.in` for Pytho
 ### Frontend: `templates/index.html`, `assets/app.js`
 A single page in plain JavaScript (no framework):
 - **Tokens:** keeps the access and refresh tokens in `localStorage`. A 401 triggers one
-  token refresh, then the request is retried.
+  token refresh, then the request is retried. Tabs renew one at a time (`navigator.locks`), each first taking a
+  newer token another tab saved. Only the "Log out" button ends the login on the server; a refused refresh token
+  only signs the tab out (session 036).
 - **Socket:** opens one socket and sends `{"action": "ping"}` every 30 s (`PING_MS`).
 - **Reconnect:** waits `1s, 2s, 4s…` up to 15 s. If the server closed with code 4401
   (not logged in), it refreshes the token first.
