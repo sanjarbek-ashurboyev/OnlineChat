@@ -11,7 +11,9 @@ from django.conf import settings
 from django.core.cache import cache
 from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management import call_command
 from django.db import connection
+from django.db.migrations.recorder import MigrationRecorder
 from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from PIL import Image
@@ -230,6 +232,47 @@ class ConcurrentRefreshTests(TransactionTestCase):
                 thread.join()
 
         self.assertEqual(sorted(statuses), [200, 401])
+
+
+class OldBlacklistTablesTests(TransactionTestCase):
+    """Codex review of #46: a database migrated while SimpleJWT's blacklist app was installed keeps its tables, and
+    their rows point at users. Removing the app left them in place, so deleting such a user failed."""
+    TABLES = ['token_blacklist_blacklistedtoken', 'token_blacklist_outstandingtoken']
+
+    def setUp(self):
+        self.addCleanup(self.forget_blacklist_tables)
+        self.user = make_user()
+        # The database as the release before this one left it: accounts at 0003, and the blacklist's two tables
+        # holding a blacklisted token of this user. The real models can't be loaded once the app is gone (SimpleJWT
+        # makes them abstract), so the tables are built by hand, with the same foreign keys.
+        call_command('migrate', 'accounts', '0003', verbosity=0)
+        self.addCleanup(call_command, 'migrate', 'accounts', verbosity=0)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                'CREATE TABLE token_blacklist_outstandingtoken (id integer PRIMARY KEY, jti varchar(255) NOT NULL,'
+                ' user_id bigint NULL REFERENCES accounts_user (id) DEFERRABLE INITIALLY DEFERRED)')
+            cursor.execute(
+                'CREATE TABLE token_blacklist_blacklistedtoken (id integer PRIMARY KEY, token_id bigint NOT NULL'
+                ' REFERENCES token_blacklist_outstandingtoken (id) DEFERRABLE INITIALLY DEFERRED)')
+            cursor.execute("INSERT INTO token_blacklist_outstandingtoken VALUES (1, 'old', %s)", [self.user.pk])
+            cursor.execute('INSERT INTO token_blacklist_blacklistedtoken VALUES (1, 1)')
+        MigrationRecorder(connection).record_applied('token_blacklist', '0013_alter_blacklistedtoken_options_and_more')
+
+    def forget_blacklist_tables(self):
+        """Whatever the test left, the next test starts without the blacklist."""
+        with connection.schema_editor() as editor:
+            for table in self.TABLES:
+                editor.execute(f'DROP TABLE IF EXISTS {editor.quote_name(table)}')
+        MigrationRecorder(connection).migration_qs.filter(app='token_blacklist').delete()
+
+    def test_deploying_drops_the_old_tables_so_a_user_can_be_deleted(self):
+        call_command('migrate', 'accounts', verbosity=0)   # the deploy
+
+        self.user.delete()
+        self.assertFalse(User.objects.filter(pk=self.user.pk).exists())
+        self.assertFalse(set(self.TABLES) & set(connection.introspection.table_names()))
+        # Forgotten too, so that a rollback's `migrate` builds the tables again for the old code.
+        self.assertFalse(MigrationRecorder(connection).migration_qs.filter(app='token_blacklist').exists())
 
 
 class AuthThrottleTests(TestCase):

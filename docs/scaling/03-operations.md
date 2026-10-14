@@ -112,7 +112,12 @@ says which test proves the mitigation works.
 
 **T-07 · Refresh rotation and server-side logout** · M · 2–4 h · Next? no
 - **Status (2026-10-13): done** (session 030, [decision 014](../learning-journal/decisions/014-refresh-rotation-and-logout.md)). Rotation + blacklist; `POST /auth/logout/`; the client shares one refresh per tab and picks up another tab's renewal.
-- **Update (session 036, [decision 016](../learning-journal/decisions/016-login-sessions.md)):** the blacklist is replaced by a row per login (`accounts.LoginSession`): one token can no longer be spent twice at once, and logout with any of the login's tokens ends it. Deploy runs `migrate` (new `accounts_loginsession` table); everyone signs in once more. Still to schedule (with T-10): a daily delete of ended and expired `LoginSession` rows. The old `token_blacklist_*` tables can be dropped by hand.
+- **Update (session 036, [decision 016](../learning-journal/decisions/016-login-sessions.md)):** the blacklist is replaced by a row per login (`accounts.LoginSession`): one token can no longer be spent twice at once, and logout with any of the login's tokens ends it. Deploy runs `migrate` (new `accounts_loginsession` table); everyone signs in once more. Still to schedule (with T-10): a daily delete of ended and expired `LoginSession` rows. Migration `accounts.0004` drops the old `token_blacklist_*` tables and forgets their migrations: their rows point at users, and with the app gone nothing deleted them first, so deleting such a user failed (Codex review of #46).
+- **Rollback of this release (PR #46) needs a token-invalidation step.** The old code checks only its blacklist, which the rollback leaves empty, so it accepts every refresh token the new code had retired: logged-out logins and every token already rotated away (rehearsed on a copy of the dev database: both → 200 on the old code). In order:
+  1. With the **new** code still in place: `python manage.py migrate accounts 0002` (drops `accounts_loginsession`; 0004 has nothing to undo).
+  2. Deploy the old code and run `python manage.py migrate`: it builds the `token_blacklist_*` tables again, empty.
+  3. **Set a new `DJANGO_SECRET_KEY`** (it signs the tokens) before the old code serves traffic. Every token dies, so everyone signs in again (rehearsed: both tokens → 401). Never go back to an earlier key.
+  4. Deploying the new code again later just runs `migrate` (0003 and 0004 apply again).
 - **Steps:**
   1. `SIMPLE_JWT = {'ROTATE_REFRESH_TOKENS': True, 'BLACKLIST_AFTER_ROTATION': True}`.
   2. Add `rest_framework_simplejwt.token_blacklist` to apps and run its migration.
@@ -257,6 +262,7 @@ says which test proves the mitigation works.
 4. Deploy new code (stage 1: restart; stage 2: rolling, one server at a time, graceful WS close).
 5. Watch dashboards for 15 minutes: error rate, p95, reconnects.
 6. On regression, **roll back the code** (previous image tag). Expand-only migrations don't need rolling back.
+   Some releases need more: check the task's rollback note first (T-07's PR #46 needs a migration back and a new signing key).
 
 ### Migration rules (memorise these; they prevent most outages caused by deploys)
 
