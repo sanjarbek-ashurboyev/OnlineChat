@@ -616,3 +616,19 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
 - **Fix:** our own `check` (`root/db.py`): on the first dead connection, `pool.check()` tests all idle ones at once
   and replaces the dead ones. A full pool of dead connections now recovers in ~18 ms.
 - **Lesson:** test the worst case of a fix (a *full* pool), not just the case that's easy to set up.
+
+## P-44 · One hung connection stalled every request during the pool's cleanup
+
+- **Session:** [035](sessions/035-dead-pooled-connections.md) (follow-up) · found by Codex's review of PR #45
+- **Observed:** test `test_one_hung_connection_doesnt_stall_the_others` (`root/test_database.py`): a full pool of 10
+  with 5 dead connections, 1 hung (a test proxy holds the server's answers) and 4 healthy. One request, then 20 more.
+  With P-38's fix: the first request **stuck** (until the test ended the hang), all **20** others failed with
+  `couldn't get a connection after 5.00 sec`. Codex saw the same on a real server (one request failed after 6.4 s,
+  another timed out at 5 s).
+- **Root cause (Confirmed, from psycopg_pool's source and the test):** the request that met the first dead connection
+  ran `pool.check()`. It takes *every* idle connection out of the pool, then tests them one by one on that request's
+  thread. The hung one never answers, so the test never ends, and the pool stays empty for everyone else.
+- **Fix:** `pool.drain()` instead: close every idle connection without testing it, and let the pool's background
+  workers open new ones. Same test: all 21 requests succeed, the slowest in 15–27 ms (10 runs out of 10).
+- **Lesson:** cleanup that does network I/O, one item after another, on a request's thread, is only as fast as the
+  slowest item, and here that item could take forever. Prefer cleanup that can't wait (closing), done in the background.

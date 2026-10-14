@@ -30,8 +30,10 @@ request 3: checkout A → without a check: error. With a check: A fails the test
 - `root/settings.py`: `OPTIONS['pool']` = `min_size 2`, `max_size 10`, `timeout 5`, per process (T-13, session 032).
   Django's `connection.close()` returns the connection to the pool instead of closing it.
 - `check`: `root/db.py` `check_pooled_connection` tests every checkout, and when it finds one dead connection it
-  tests all idle ones at once (`pool.check()`). Without that, a pool of 10 dead connections made a request wait past
-  the 5 s timeout ([decision 015](../decisions/015-check-pooled-connections.md), session 035).
+  replaces all idle ones (`pool.drain()`): it closes them without testing and the pool's background workers open new
+  ones. Without that, a pool of 10 dead connections made a request wait past the 5 s timeout
+  ([decision 015](../decisions/015-check-pooled-connections.md), session 035). The first version tested them all
+  with `pool.check()` instead, on the request's own thread; one hung connection then stalled every request (P-44).
 - Cost of the check: about +0.6–0.8 ms at p95 per database call on this Mac.
 
 ## 6. Alternatives
@@ -46,6 +48,9 @@ request 3: checkout A → without a check: error. With a check: A fails the test
 - **No check, and a database restart.** Every connection opened before the restart is dead; each one fails a request.
 - **Testing only the easy case.** A check that recovers from 3 dead connections can still time out with a full pool
   (P-38).
+- **Slow cleanup on the request's thread.** Testing every idle connection while holding them out of the pool means one
+  connection that never answers blocks the request doing it, and everyone waiting for a connection (P-44). Close and
+  replace in the background instead.
 - **Too large a pool**: processes × `max_size` above Postgres's `max_connections` → "too many clients" errors.
 - **Tests sharing a pool**: one test fills it, and the next test's assumptions about "fresh" connections break.
   `connection.close_pool()` gives the next test a new one.

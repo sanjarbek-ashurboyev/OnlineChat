@@ -157,6 +157,8 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
   (it stops after a restart). `open -a Docker`, then wait for both services to be healthy (session 025).
 - **A connection pool hands out dead connections after Postgres restarts, and `CONN_HEALTH_CHECKS` alone isn't enough**:
   the pool's default check timed out with 10 dead ones. Our check drops them all (`root/db.py`). → [P-38](docs/learning-journal/problems-and-solutions.md#p-38--conn_health_checks-still-failed-with-a-pool-full-of-dead-connections)
+- **Never test pooled connections one by one on a request's thread** (`pool.check()`): one that hangs stalls that
+  request and empties the pool for everyone. `pool.drain()` closes them and reopens in the background. → [P-44](docs/learning-journal/problems-and-solutions.md#p-44--one-hung-connection-stalled-every-request-during-the-pools-cleanup)
 - **Port 5432 on this Mac belongs to a Homebrew Postgres 14**, not the Docker one, and it's too old for Django 6.1.
   Stop it (`brew services stop postgresql@14`) or map Docker to another port. → [P-04](docs/learning-journal/problems-and-solutions.md#p-04--makemigrations---check-warned-it-couldnt-connect-to-postgres)
 
