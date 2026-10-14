@@ -18,6 +18,19 @@ def backend_pid():
         return cursor.fetchone()[0]
 
 
+def shut(sock):
+    """Close a socket that another thread may be blocked on (`recv`, `accept`).
+
+    On Linux, `close()` alone doesn't wake that thread, and the connection stays open as long as it waits: here,
+    forever, so Postgres kept the sessions and couldn't drop the test database (CI). `shutdown()` wakes it.
+    """
+    try:
+        sock.shutdown(socket.SHUT_RDWR)
+    except OSError:
+        pass  # not connected (a listener on macOS), or already closed
+    sock.close()
+
+
 class HangingProxy:
     """A TCP proxy in front of Postgres that can make one connection hang: the server stays up and the request gets
     through, but no answer ever comes back, like a stuck backend or a network that silently drops packets. The hang ends
@@ -54,8 +67,8 @@ class HangingProxy:
         except OSError:
             pass
         finally:
-            source.close()
-            target.close()
+            shut(source)
+            shut(target)
 
     def hang(self, conn):
         """From now on, `conn` (a psycopg connection through this proxy) gets no answers."""
@@ -64,9 +77,8 @@ class HangingProxy:
 
     def close(self):
         self.closed.set()
-        self.listener.close()
-        for sock in self.sockets:
-            sock.close()
+        for sock in [self.listener, *self.sockets]:
+            shut(sock)
 
 
 class ConnectionPoolTests(TransactionTestCase):

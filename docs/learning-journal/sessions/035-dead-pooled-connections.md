@@ -168,6 +168,13 @@ The test:
    by running `make test` at that commit: **168 run, OK (skipped=18)**, 203 found.
 8. **Results:** `make test` **169 run, OK (skipped=19)** (204 found); real Postgres + Redis with
    `REQUIRE_BROWSER_TESTS=True` **204 OK**; `makemigrations --check` no changes; Ruff 0.16.10 clean.
+9. **CI was red after the push**, although all 204 tests passed: dropping the test database failed with
+   `database "test_onlinechat" is being accessed by other users`, `There are 10 other sessions`. My local runs had
+   passed because I only grepped the summary lines, and the error comes after `OK`. It didn't happen on the Mac at
+   all, even with CI's settings (`DEBUG` off). In a Linux container (`python:3.13-slim`, against the Docker Postgres)
+   it happened every time. Cause: the test proxy, not the pool (P-45). Fix: `shut()` in `root/test_database.py`
+   (`shutdown()` before `close()`). Linux container: 3 runs of 3 clean; Mac: `make test` 169 run, OK (skipped=19),
+   exit 0; real stack with browser tests required 204 OK, exit 0.
 
 **Not done:**
 - A request that is handed the hung connection *itself*, before any drain, still waits as long as the hang lasts.
@@ -263,6 +270,7 @@ one sits at the right end, where the old cleanup met it first.
 
 ## Problems
 - **One hung connection stalled every request** → [P-44](../problems-and-solutions.md#p-44--one-hung-connection-stalled-every-request-during-the-pools-cleanup).
+- **CI failed at teardown: 10 sessions left on the test database** → [P-45](../problems-and-solutions.md#p-45--the-test-proxy-left-10-postgres-sessions-open-on-linux).
 - **The first failure message was cut off** (`'Operatio[1505 chars]'`). unittest shortens long diffs; setting
   `self.maxDiff = None` for one run showed all 20 timeouts. Named threads (`first`, `crowd-N`) made the output
   readable.

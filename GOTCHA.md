@@ -57,6 +57,8 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
 - **macOS has no `timeout` command.** `timeout 40 cmd` fails with "command not found", so the command never runs.
   Use Python's `subprocess.run(..., timeout=40)` instead.
 - **"0 tests ran" is not "tests pass".**
+- **`OK` is not "the run passed": check the exit code.** Dropping the test database comes after `OK`, and its error
+  fails the job (P-45).
 - **Browser tests (`chats/test_browser.py`) skip on `make test`.** Run them with Docker up:
   `python manage.py test chats.test_browser`. A skip is not a pass: CI sets `REQUIRE_BROWSER_TESTS=True`, which turns
   any skip into an error ([decision 012](docs/learning-journal/decisions/012-required-browser-tests.md)).
@@ -157,6 +159,9 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
   (it stops after a restart). `open -a Docker`, then wait for both services to be healthy (session 025).
 - **A connection pool hands out dead connections after Postgres restarts, and `CONN_HEALTH_CHECKS` alone isn't enough**:
   the pool's default check timed out with 10 dead ones. Our check drops them all (`root/db.py`). → [P-38](docs/learning-journal/problems-and-solutions.md#p-38--conn_health_checks-still-failed-with-a-pool-full-of-dead-connections)
+- **To stop a thread blocked on a socket, `shutdown()` it before `close()`.** On Linux `close()` doesn't wake a blocked
+  `recv`/`accept`, and the connection stays open: our test proxy left 10 Postgres sessions behind in CI, never on the
+  Mac. → [P-45](docs/learning-journal/problems-and-solutions.md#p-45--the-test-proxy-left-10-postgres-sessions-open-on-linux)
 - **Never test pooled connections one by one on a request's thread** (`pool.check()`): one that hangs stalls that
   request and empties the pool for everyone. `pool.drain()` closes them and reopens in the background. → [P-44](docs/learning-journal/problems-and-solutions.md#p-44--one-hung-connection-stalled-every-request-during-the-pools-cleanup)
 - **Port 5432 on this Mac belongs to a Homebrew Postgres 14**, not the Docker one, and it's too old for Django 6.1.

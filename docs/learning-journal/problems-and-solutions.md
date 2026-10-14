@@ -632,3 +632,18 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   workers open new ones. Same test: all 21 requests succeed, the slowest in 15–27 ms (10 runs out of 10).
 - **Lesson:** cleanup that does network I/O, one item after another, on a request's thread, is only as fast as the
   slowest item, and here that item could take forever. Prefer cleanup that can't wait (closing), done in the background.
+
+## P-45 · The test proxy left 10 Postgres sessions open on Linux
+
+- **Session:** [035](sessions/035-dead-pooled-connections.md) (follow-up)
+- **Observed:** CI's `test-postgres-redis` ran all 204 tests OK, then failed: `database "test_onlinechat" is being
+  accessed by other users`, `There are 10 other sessions`. On the Mac, never (also with CI's settings). In a Linux
+  container (`python:3.13-slim`) running `root.test_database` and `root.test_health`: every time.
+- **Root cause (Confirmed: fails on Linux, passes after the fix):** `HangingProxy` stopped by calling `close()` on
+  sockets that its own threads were blocked on (`recv`, `accept`). On macOS that wakes them. On Linux it doesn't: the
+  blocked call keeps the socket open, so the proxy's connections to Postgres stayed open, one session per pooled
+  connection (10, a full pool).
+- **Fix:** `shut()`: `shutdown(SHUT_RDWR)` before `close()`, which wakes the blocked thread and really ends the
+  connection on both systems.
+- **Lesson:** to stop a thread blocked on a socket, `shutdown()` it; `close()` alone is not portable. And read the exit
+  code of a test run: this error comes after the `OK` line.
