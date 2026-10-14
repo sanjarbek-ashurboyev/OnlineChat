@@ -758,3 +758,55 @@ class RefreshRotationTests(BrowserTestCase):
         route.fulfill(response=answer)
 
         self.assertFalse(self.still_renews(renewed), 'the renewal that crossed the logout still works')
+
+    def hold_renewal(self, page):
+        """The server renews the token at once, but `page` only gets the answer when the test fulfils it."""
+        held = []
+        page.route('**/api/v1/auth/token/refresh/', lambda route: held.append((route, route.fetch())))
+        return held
+
+    def logouts(self, page):
+        sent = []
+        page.on('request', lambda request: sent.append(request) if request.url.endswith('/auth/logout/') else None)
+        return sent
+
+    def test_a_tab_that_loses_a_refresh_race_waits_for_the_winner(self):
+        # Codex review of #46: both tabs hold R0 and need a new token. The server gives the first R1, and refuses
+        # R0 to the second before the first has saved R1. The second signed out, and its logout ended the login,
+        # R1 included. Now one tab renews at a time, and the second uses what the first saved.
+        first = self.open_app(refresh=True)
+        second = self.second_tab(first)
+        self.assertTrue(second.evaluate('!!navigator.locks'))
+        logouts = self.logouts(second)
+        held = self.hold_renewal(first)
+        first.evaluate("state.access = 'expired'; void api('/auth/profile/').catch(() => {})")
+        self.wait_until(first, lambda: held)
+
+        second.evaluate("state.access = 'expired'; void start()")   # what a page load does
+        second.wait_for_timeout(300)   # without the wait, its refresh would have been refused by now
+        route, answer = held[0]
+        route.fulfill(response=answer)
+
+        self.assertEqual(second.evaluate("api('/auth/profile/').then((p) => p.id, (e) => e.status)"), self.me.id)
+        self.assertEqual(logouts, [])
+        self.assertFalse(LoginSession.objects.filter(user=self.me, ended_at__isnull=False).exists())
+
+    def test_a_tab_that_loses_a_refresh_race_without_locks_leaves_the_login_alone(self):
+        # Without navigator.locks (an old browser, plain http off localhost) the race can still be lost. The
+        # losing tab may sign itself out, but its token was refused: it must not end the login the winner renewed.
+        first = self.open_app(refresh=True)
+        second = self.second_tab(first)
+        for tab in (first, second):
+            tab.evaluate("Object.defineProperty(navigator, 'locks', {value: undefined})")
+        logouts = self.logouts(second)
+        held = self.hold_renewal(first)
+        first.evaluate("state.access = 'expired'; void api('/auth/profile/').catch(() => {})")
+        self.wait_until(first, lambda: held)
+
+        second.evaluate("state.access = 'expired'; void start()")
+        expect(second.locator('#auth')).to_be_visible()   # it lost: R0 was refused
+        route, answer = held[0]
+        route.fulfill(response=answer)
+
+        self.assertEqual(logouts, [])
+        self.assertTrue(self.still_renews(answer.json()['refresh']), "the winner's login was ended")

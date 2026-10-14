@@ -85,30 +85,45 @@ function refreshAccess() {
 }
 
 async function renewTokens() {
+  const session = state.session;
+  // One tab of this browser renews at a time. A tab that waited then finds the token the one before it
+  // saved, instead of spending one already spent and signing out (Codex review of #46).
+  const work = () => (session === state.session ? spendRefreshToken() : false);
+  const renewed = await (navigator.locks ? navigator.locks.request('refresh-token', work) : work());
+  // Signed out meanwhile: these tokens must not sign anyone back in.
+  if (session !== state.session) return dropped();
+  return renewed;
+}
+
+/** Runs under the lock, so it must always settle: a promise that never does would hold the lock forever. */
+async function spendRefreshToken() {
+  adoptStoredToken();
   if (!state.refresh) return false;
   const session = state.session;
-  const sent = state.refresh;
   const res = await fetch(`${API}/auth/token/refresh/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh: sent }),
+    body: JSON.stringify({ refresh: state.refresh }),
   });
   if (res.status === 400 || res.status === 401) {
-    if (session !== state.session) return dropped();
-    // Another tab of the same account may have renewed first, which retired our token. It saved the new
-    // one; use it. Never another account's: that would sign this tab in as someone else.
-    const stored = localStorage.getItem('refresh');
-    if (stored && stored !== sent && tokenUser(stored) === tokenUser(sent)) {
-      state.refresh = stored;
-      return renewTokens();
-    }
+    // Without the lock, another tab can still have won: try what it saved.
+    if (session === state.session && adoptStoredToken()) return spendRefreshToken();
     return false;
   }
   if (!res.ok) throw Object.assign(new Error('refresh failed'), { status: res.status });
   const data = await res.json();
-  // Signed out meanwhile: these tokens must not sign anyone back in.
-  if (session !== state.session) return dropped();
+  if (session !== state.session) return false;
   saveTokens(data.access, data.refresh);
+  return true;
+}
+
+/** Another tab of the same account may have renewed, which retired our token. It saved the new one;
+ *  take it. Never another account's: that would sign this tab in as someone else. */
+function adoptStoredToken() {
+  const stored = localStorage.getItem('refresh');
+  if (!stored || !state.refresh || stored === state.refresh) return false;
+  if (tokenUser(stored) !== tokenUser(state.refresh)) return false;
+  state.refresh = stored;
   return true;
 }
 
@@ -675,7 +690,7 @@ function connectInbox() {
     // backoff too, so a token the server keeps refusing can't cause a tight loop.
     // Only a refused refresh token signs out; a network error just tries again (M-12).
     if (event.code === 4401) {
-      refreshAccess().then((ok) => (ok ? scheduleReconnect() : logout()), scheduleReconnect);
+      refreshAccess().then((ok) => (ok ? scheduleReconnect() : signOut()), scheduleReconnect);
       return;
     }
     scheduleReconnect();
@@ -785,6 +800,12 @@ function logout() {
       keepalive: true,
     }).catch(() => {});
   }
+  signOut();
+}
+
+/** Sign out of this tab only. All there is to do once the server refused our refresh token: if another
+ *  tab spent it first, ending the login would end that tab's too (Codex review of #46). */
+function signOut() {
   // Nothing from this session may touch the next one (Codex audit H-04): requests and token
   // refreshes still in flight are dropped, and the socket's handlers and timers are gone.
   state.session += 1;
@@ -826,7 +847,7 @@ async function start() {
     // Only the server refusing our tokens signs us out. A network or server error is
     // retried, keeping the tokens (Codex audit M-12).
     if (err.status === 401) {
-      logout();
+      signOut();
       return;
     }
     $('auth-error').textContent = "Can't reach the server. Trying again…";
