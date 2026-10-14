@@ -603,3 +603,47 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   fast that run was, and interleave runs (A-B-A-B) before claiming a ceiling moved.
 - **Lesson:** near the ceiling, a single before/after pair can't show a 250-user difference.
 
+
+## P-38 · `CONN_HEALTH_CHECKS` still failed with a pool full of dead connections
+
+- **Session:** [035](sessions/035-dead-pooled-connections.md)
+- **Observed:** after `docker compose restart db`, `/readyz` answered `503 503 503` before recovering (`main`,
+  `35eb53a`). The suggested fix, `CONN_HEALTH_CHECKS = True`, made a test with 3 dead connections pass after 2.9 s,
+  but with 10 dead ones (a full pool) the request still failed: `couldn't get a connection after 5.00 sec`.
+- **Root cause (Confirmed, from psycopg_pool's source and the timings):** a pooled connection is only found dead when
+  it's used. With a check, the pool tests one connection per try and waits 0 s, ~1 s, ~2 s, ~4 s between tries; ten
+  dead ones need longer than our 5 s `timeout`.
+- **Fix:** our own `check` (`root/db.py`): on the first dead connection, `pool.check()` tests all idle ones at once
+  and replaces the dead ones. A full pool of dead connections now recovers in ~18 ms.
+- **Lesson:** test the worst case of a fix (a *full* pool), not just the case that's easy to set up.
+
+## P-44 · One hung connection stalled every request during the pool's cleanup
+
+- **Session:** [035](sessions/035-dead-pooled-connections.md) (follow-up) · found by Codex's review of PR #45
+- **Observed:** test `test_one_hung_connection_doesnt_stall_the_others` (`root/test_database.py`): a full pool of 10
+  with 5 dead connections, 1 hung (a test proxy holds the server's answers) and 4 healthy. One request, then 20 more.
+  With P-38's fix: the first request **stuck** (until the test ended the hang), all **20** others failed with
+  `couldn't get a connection after 5.00 sec`. Codex saw the same on a real server (one request failed after 6.4 s,
+  another timed out at 5 s).
+- **Root cause (Confirmed, from psycopg_pool's source and the test):** the request that met the first dead connection
+  ran `pool.check()`. It takes *every* idle connection out of the pool, then tests them one by one on that request's
+  thread. The hung one never answers, so the test never ends, and the pool stays empty for everyone else.
+- **Fix:** `pool.drain()` instead: close every idle connection without testing it, and let the pool's background
+  workers open new ones. Same test: all 21 requests succeed, the slowest in 15–27 ms (10 runs out of 10).
+- **Lesson:** cleanup that does network I/O, one item after another, on a request's thread, is only as fast as the
+  slowest item, and here that item could take forever. Prefer cleanup that can't wait (closing), done in the background.
+
+## P-45 · The test proxy left 10 Postgres sessions open on Linux
+
+- **Session:** [035](sessions/035-dead-pooled-connections.md) (follow-up)
+- **Observed:** CI's `test-postgres-redis` ran all 204 tests OK, then failed: `database "test_onlinechat" is being
+  accessed by other users`, `There are 10 other sessions`. On the Mac, never (also with CI's settings). In a Linux
+  container (`python:3.13-slim`) running `root.test_database` and `root.test_health`: every time.
+- **Root cause (Confirmed: fails on Linux, passes after the fix):** `HangingProxy` stopped by calling `close()` on
+  sockets that its own threads were blocked on (`recv`, `accept`). On macOS that wakes them. On Linux it doesn't: the
+  blocked call keeps the socket open, so the proxy's connections to Postgres stayed open, one session per pooled
+  connection (10, a full pool).
+- **Fix:** `shut()`: `shutdown(SHUT_RDWR)` before `close()`, which wakes the blocked thread and really ends the
+  connection on both systems.
+- **Lesson:** to stop a thread blocked on a socket, `shutdown()` it; `close()` alone is not portable. And read the exit
+  code of a test run: this error comes after the `OK` line.
