@@ -20,7 +20,7 @@ Why it exists: it's a learning project meant to be shown to employers, and
 
 ```
                       ┌────────────── Browser ──────────────┐
-                      │ templates/index.html + assets/app.js │
+                      │ templates/index.html + assets/js/*.js│
                       └───────┬────────────────────┬────────┘
                HTTP (REST)    │                    │   WebSocket
        /api/v1/... with       │                    │   /ws/inbox/?token=<JWT>
@@ -110,8 +110,12 @@ Versions come from `requirements.txt`, compiled from `requirements.in` for Pytho
 - `presence.py`: who's online, stored as Redis sets with a 90 s expiry.
 - `management/commands/loadtest_seed.py`: creates fake users for the load test.
 
-### Frontend: `templates/index.html`, `assets/app.js`
-A single page in plain JavaScript (no framework):
+### Frontend: `templates/index.html`, `assets/js/`
+A single page in plain JavaScript (no framework, no build step; [decision 018](decisions/018-plain-js-not-react.md)),
+split into ES modules (session 039). `main.js` is the entry point; one module per topic:
+`state.js` (constants, shared state), `tokens.js` (renewal and logout on the server), `api.js`, `format.js`,
+`chats.js` (the list), `messages.js` (history, opening a chat), `socket.js`, `composer.js`, `profile.js`,
+`session.js` (login screen, sign-out, start).
 - **Tokens:** keeps the access and refresh tokens in `localStorage`. A 401 triggers one
   token refresh, then the request is retried. Tabs renew one at a time (`navigator.locks`), each first taking a
   newer token another tab saved. Only the "Log out" button ends the login on the server; a refused refresh token
@@ -165,7 +169,7 @@ A single page in plain JavaScript (no framework):
 ## Key flows
 
 **Opening the app (WebSocket connect)**
-1. `app.js` calls `new WebSocket('/ws/inbox/?token=<access>')`.
+1. `connectInbox()` (`assets/js/socket.js`) calls `new WebSocket('/ws/inbox/?token=<access>')`.
 2. `AllowedHostsOriginValidator` rejects the socket if the `Origin` header isn't an allowed host.
 3. `JWTAuthMiddleware` checks the token. A bad token means `AnonymousUser`.
 4. `InboxConsumer.connect()` closes with code **4401** if the user is anonymous. Otherwise it:
