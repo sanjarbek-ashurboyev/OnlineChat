@@ -54,8 +54,10 @@ never `innerHTML`. Dark mode follows the system. Phones get a list/chat view swi
 
 1. **The browser tests are the safety net.** They find elements by these hooks; keep them, or change the test in the
    same PR and say why:
-   - ids: `#auth`, `#auth-form` (inputs `phone_number`, `password`), `#auth-submit`, `#auth-error`, `#app`,
-     `#chat-list li`, `#logout`, `#peer-name`, `#peer-status`, `#peer-avatar`, `#conn-state.is-open`,
+   - ids: `#auth`, `#auth-form` (inputs `phone_number`, `password`), `#auth-submit`, `#auth-error`, `#app`
+     (`data-view`), `#chat-list li`, `#open-menu`, `#menu`, `#logout` (inside the menu: tests use `log_out()`),
+     `#me-name`, `#peer-name`, `#peer-status`, `#peer-conn`, `#peer-avatar`, `#conn-state.is-open` (its text: "Chats"),
+     `#back`, `.sidebar` and `.pane` (`inert` when off screen on a phone),
      `#message-rows .row` (`.row.out`, `.bubble`, `.meta`), `#composer-input`, `#send-error`
    - classes: `.chat-name`, `.badge`; `.row.out .meta` ends with `✓✓` when read
    - accessible names: "Show more chats", "Load older messages", the chat row's name; placeholder
@@ -64,7 +66,8 @@ never `innerHTML`. Dark mode follows the system. Phones get a list/chat view swi
      `revokeLogin`
 2. **Checked:** `make test`, the browser tests on real Postgres + Redis with `REQUIRE_BROWSER_TESTS=True`, Ruff, and
    screenshots in light, dark and phone width.
-3. **One branch per task** from a fresh `main`, named `f-NN-short-name`, with a journal session.
+3. **One branch per task** from a fresh `main`, named `f-NN-short-name`, with a journal session. CI is slow, so
+   code and journal go in the same PR, pushed once when complete; related tasks may share a PR (2026-10-15).
 
 ## Phase 1: look and feel (frontend only)
 
@@ -72,7 +75,7 @@ never `innerHTML`. Dark mode follows the system. Phones get a list/chat view swi
 |---|---|---|
 | **F-01** | Split `app.js` into ES modules, no behaviour change | All browser tests pass unchanged |
 | **F-02** | Design system: colour roles (light, dark, high contrast), type scale, space and radius, SVG icons, press feedback, reduced motion | A token sheet in CSS; icons have `aria-label`; text pairs pass 4.5:1. **Done** (session 040) |
-| **F-03** | Layout and navigation: frosted header and composer (materials, reduced transparency), push/back transitions on phones with the edge swipe (the spring helper), ☰ drawer | **You try it on your phone** before F-04 |
+| **F-03** | Layout and navigation: frosted header and composer (materials, reduced transparency), push/back transitions on phones with swipe-back (the spring helper), ☰ drawer, connection status in words | **Done** (session 041). **You try it on your phone** before F-04 |
 | **F-04** | Chat list: initials avatars, new rows, rows glide when a chat moves to the top, local filter | |
 | **F-05** | Messages: wallpaper, tails, grouping, date dividers, SVG ticks, ↓ button, load on scroll, "Not delivered" + retry | |
 | **F-06** | Login screen and the settings panel | |

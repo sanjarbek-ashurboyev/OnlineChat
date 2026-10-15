@@ -14,6 +14,7 @@
   <symbol id="i-logout" viewBox="0 0 24 24"><path d="M10 4.5H6.5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2H10"/><path d="M15 8l4 4-4 4"/><path d="M19 12H9.5"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></symbol>
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
   <symbol id="i-send" viewBox="0 0 24 24"><path d="M20.5 3.5 3.5 10.5l7 3 3 7z"/><path d="M20.5 3.5l-10 10"/></symbol>
 </svg>
 
@@ -59,14 +60,10 @@
 <main id="app" class="app" hidden>
 
   <aside class="sidebar">
-    <header class="me">
-      <img id="me-avatar" class="avatar" alt="">
-      <div class="me-text">
-        <strong id="me-name">…</strong>
-        <span id="me-phone" class="muted"></span>
-      </div>
-      <button id="open-profile" class="icon-btn" title="Profile" aria-label="Profile"><svg class="icon" aria-hidden="true"><use href="#i-person"/></svg></button>
-      <button id="logout" class="icon-btn" title="Log out" aria-label="Log out"><svg class="icon" aria-hidden="true"><use href="#i-logout"/></svg></button>
+    <header class="sidebar-head">
+      <button id="open-menu" class="icon-btn" title="Menu" aria-label="Menu" aria-haspopup="dialog"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg></button>
+      <!-- The list's title says how the connection is: "Chats" when it's up (F-03). -->
+      <h1 class="sidebar-title"><span id="conn-state" class="conn" role="status">Connecting…</span></h1>
     </header>
 
     <form id="lookup-form" class="lookup">
@@ -84,30 +81,47 @@
     <div id="pane-empty" class="empty pane-empty">Pick a conversation</div>
 
     <div id="pane-chat" hidden>
-      <header class="pane-head">
-        <button id="back" class="icon-btn only-narrow" title="Back" aria-label="Back"><svg class="icon" aria-hidden="true"><use href="#i-back"/></svg></button>
-        <img id="peer-avatar" class="avatar" alt="">
-        <div>
-          <strong id="peer-name"></strong>
-          <span id="peer-status" class="muted status"></span>
-        </div>
-        <span id="conn-state" class="conn" title="Connection"></span>
-      </header>
-
+      <!-- Header and composer stick to the edges of the scrolling area, so messages pass under their glass. -->
       <div id="messages" class="messages">
+        <header class="pane-head material">
+          <button id="back" class="icon-btn only-narrow" title="Back" aria-label="Back"><svg class="icon" aria-hidden="true"><use href="#i-back"/></svg></button>
+          <img id="peer-avatar" class="avatar" alt="">
+          <div>
+            <strong id="peer-name"></strong>
+            <span id="peer-status" class="muted status"></span>
+            <span id="peer-conn" class="muted status" hidden></span>
+          </div>
+        </header>
+
         <button id="load-older" class="load-older" hidden>Load older messages</button>
         <div id="message-rows"></div>
-      </div>
 
-      <form id="send-form" class="composer">
-        <textarea id="composer-input" rows="1" placeholder="Write a message…"
-                  autocomplete="off"></textarea>
-        <button type="submit" class="primary send" title="Send" aria-label="Send"><svg class="icon" aria-hidden="true"><use href="#i-send"/></svg></button>
-      </form>
-      <p id="send-error" class="error composer-error" hidden></p>
+        <div class="composer-bar material">
+          <form id="send-form" class="composer">
+            <textarea id="composer-input" rows="1" placeholder="Write a message…"
+                      autocomplete="off"></textarea>
+            <button type="submit" class="primary send" title="Send" aria-label="Send"><svg class="icon" aria-hidden="true"><use href="#i-send"/></svg></button>
+          </form>
+          <p id="send-error" class="error composer-error" hidden></p>
+        </div>
+      </div>
     </div>
   </section>
 </main>
+
+<!-- ───────────── ☰ Menu: a drawer from the left ───────────── -->
+<dialog id="menu" class="drawer" aria-label="Menu">
+  <div class="drawer-scrim"></div>
+  <nav class="drawer-panel">
+    <header class="drawer-me">
+      <img id="me-avatar" class="avatar avatar-lg" alt="">
+      <strong id="me-name">…</strong>
+      <span id="me-phone" class="muted"></span>
+    </header>
+    <button id="open-profile" class="drawer-item"><svg class="icon" aria-hidden="true"><use href="#i-person"/></svg>Profile</button>
+    <button id="logout" class="drawer-item"><svg class="icon" aria-hidden="true"><use href="#i-logout"/></svg>Log out</button>
+  </nav>
+</dialog>
 
 <!-- ───────────── Profile dialog ───────────── -->
 <dialog id="profile-dialog">

@@ -30,6 +30,10 @@
   --color-bubble-out-text: #0b0b0d;          /* 17.8 */
   --color-bubble-out-meta: #2e7d32;          /* time and ticks: 4.63 */
 
+  /* Materials: frosted glass over the messages (header, composer) */
+  --color-material: rgba(255, 255, 255, .72);
+  --material-blur: blur(20px) saturate(180%);
+
   /* Status */
   --color-online: #34c759;                   /* a dot; "online" is also written out */
   --color-danger: #d32f2f;                   /* 4.98 on --color-bg */
@@ -82,6 +86,7 @@
     --color-bubble-out: #2b5235;
     --color-bubble-out-text: #f5f5f7;        /* 8.17 */
     --color-bubble-out-meta: #a8d8ab;        /* 5.54 */
+    --color-material: rgba(28, 28, 30, .72);
     --color-online: #30d158;
     --color-danger: #ff6b6b;                 /* 6.13 */
   }
@@ -104,6 +109,11 @@
     --color-bubble-in-meta: #c7c7cc;
     --color-bubble-out-meta: #c8e6c9;
   }
+}
+
+/* Reduced transparency: the glass becomes solid. */
+@media (prefers-reduced-transparency: reduce) {
+  :root { --color-material: var(--color-bg); --material-blur: none; }
 }
 
 /* ── Base ─────────────────────────────────── */
@@ -206,6 +216,13 @@ button:focus-visible {
   .chat-row:hover { background: var(--color-bg-secondary); }
 }
 
+/* Frosted glass: content passes underneath, softened. Light catches its top edge. */
+.material {
+  background: var(--color-material);
+  -webkit-backdrop-filter: var(--material-blur);
+  backdrop-filter: var(--material-blur);
+}
+
 .muted { color: var(--color-text-secondary); }
 .small { font-size: var(--text-footnote); }
 .error {
@@ -292,21 +309,22 @@ button:focus-visible {
   min-height: 0;
 }
 
-.me {
-  display: flex;
+/* ☰, then the title centred over the list, the way iOS lays out a navigation bar. */
+.sidebar-head {
+  display: grid;
+  grid-template-columns: 2.5rem 1fr 2.5rem;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--color-separator);
+  padding: var(--space-2) var(--space-2) 0;
 }
-.me-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.me-text span { font-size: var(--text-caption); letter-spacing: var(--tracking-loose); }
-.me-text strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.sidebar-title {
+  margin: 0;
+  text-align: center;
+  font-size: var(--text-title);
+  font-weight: 600;
   letter-spacing: var(--tracking-snug);
 }
+/* The title is the connection's state: "Chats" once connected, in words otherwise. */
+.conn:not(.is-open) { color: var(--color-text-secondary); font-weight: 500; }
 
 .lookup { display: flex; gap: var(--space-1); align-items: center; padding: var(--space-3) var(--space-3) var(--space-2) var(--space-4); }
 .lookup-msg { margin: 0 var(--space-4) var(--space-2); font-size: var(--text-footnote); color: var(--color-text-secondary); }
@@ -391,33 +409,49 @@ button:focus-visible {
 }
 
 /* ── Message pane ───────────────────────── */
-.pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--color-chat-bg); }
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--color-chat-bg);
+  touch-action: pan-y pinch-zoom;          /* sideways drags are ours: swipe back (F-03) */
+}
 .pane-empty { margin: auto; color: var(--color-on-chat-bg); }
 #pane-chat { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 
+/* One scrolling area from top to bottom. Header and composer stick to its edges, so messages pass under them. */
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y pinch-zoom;          /* the scroller decides, not .pane: sideways drags stay ours */
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  scroll-padding-block: 4.5rem 5rem;       /* what scrolls into view isn't left under the glass */
+}
+
 .pane-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-4);
-  background: var(--color-bg);
-  border-bottom: 1px solid var(--color-separator);
+  box-shadow: 0 1px 0 var(--color-separator);
 }
 .pane-head > div { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 #peer-name { font-size: var(--text-title); letter-spacing: var(--tracking-snug); }
 .status { font-size: var(--text-footnote); }
 
-.conn { width: 8px; height: 8px; border-radius: 50%; background: var(--color-text-secondary); }
-.conn.is-open { background: var(--color-online); }
-.conn.is-down { background: var(--color-danger); }
-
-.messages {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--space-4);
-  min-height: 0;
+#message-rows {
+  flex: 1 0 auto;                          /* few messages sit at the bottom, by the composer */
   display: flex;
   flex-direction: column;
+  justify-content: flex-end;
+  padding: var(--space-4);
 }
 
 .load-older {
@@ -428,7 +462,7 @@ button:focus-visible {
   border-radius: var(--radius-full);
   padding: var(--space-1) var(--space-4);
   font-size: var(--text-footnote);
-  margin-bottom: var(--space-3);
+  margin-top: var(--space-3);
 }
 
 .row { display: flex; margin-bottom: var(--space-2); }
@@ -460,13 +494,17 @@ button:focus-visible {
 }
 .row.out .meta { color: var(--color-bubble-out-meta); }
 
+.composer-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  box-shadow: 0 -1px 0 var(--color-separator);
+}
 .composer {
   display: flex;
   gap: var(--space-2);
   align-items: flex-end;
   padding: var(--space-2) var(--space-3);
-  background: var(--color-bg);
-  border-top: 1px solid var(--color-separator);
 }
 .composer textarea { resize: none; max-height: 140px; border-radius: var(--radius-lg); }
 .composer .send {
@@ -479,7 +517,7 @@ button:focus-visible {
   border-radius: var(--radius-full);
 }
 .composer .send .icon { width: 1.25rem; height: 1.25rem; }
-.composer-error { padding: 0 var(--space-4) var(--space-2); margin: 0; background: var(--color-bg); }
+.composer-error { padding: 0 var(--space-4) var(--space-2); margin: 0; }
 
 /* ── Profile dialog ─────────────────────── */
 dialog {
@@ -510,6 +548,69 @@ dialog menu button:not(.primary) {
   padding: var(--space-3) var(--space-4);
 }
 
+/* ── ☰ Menu: a drawer from the left ─────── */
+/* The <dialog> fills the screen and is see-through; the scrim and the panel inside it are what you see.
+   nav.js moves the panel with --drawer-x (px) and fades the scrim with --drawer-progress (0 closed, 1 open). */
+dialog.drawer {
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  overflow: hidden;
+}
+dialog.drawer::backdrop { background: transparent; }
+.drawer-scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--color-scrim);
+  opacity: var(--drawer-progress, 0);
+}
+.drawer-panel {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: min(80vw, 300px);
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-5) var(--space-2) var(--space-4);
+  background: var(--color-bg);
+  box-shadow: 0 0 40px rgba(0, 0, 0, .2);
+  transform: translateX(var(--drawer-x, -100%));
+  touch-action: pan-y;                     /* a sideways drag closes it */
+}
+.drawer-me {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 var(--space-3) var(--space-4);
+  margin-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-separator);
+}
+.drawer-me strong { font-size: var(--text-title); letter-spacing: var(--tracking-snug); margin-top: var(--space-3); }
+.drawer-me span { font-size: var(--text-footnote); }
+.avatar-lg { width: 4rem; height: 4rem; flex-basis: 4rem; }
+.drawer-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  padding: var(--space-3);
+  border: none;
+  border-radius: var(--radius-md);
+  background: none;
+  text-align: left;
+  font-size: var(--text-body);
+}
+.drawer-item .icon { color: var(--color-text-secondary); }
+.drawer-item:active { background: var(--color-bg-secondary); }
+@media (hover: hover) {
+  .drawer-item:hover { background: var(--color-bg-secondary); }
+}
+
 /* ── Reduced motion: no scaling; a dimmed press instead ── */
 @media (prefers-reduced-motion: reduce) {
   :is(.primary, .icon-btn, .tab, .load-older, dialog menu button):active:not(:disabled) {
@@ -521,10 +622,37 @@ dialog menu button:not(.primary) {
 /* ── Narrow screens ─────────────────────── */
 .only-narrow { display: none; }
 
+/* On a phone the chat lies on top of the list and slides in from the right, like a pushed screen on iOS.
+   nav.js moves it with --pane-x (px) and --pane-progress (0 list, 1 chat); the list drifts left and dims under it. */
 @media (max-width: 760px) {
-  .app { grid-template-columns: 1fr; }
+  .app { display: block; position: relative; overflow: hidden; }
+  .sidebar, .pane { position: absolute; inset: 0; }
+  .sidebar {
+    border-right: none;
+    transform: translateX(calc(var(--pane-progress, 0) * -30%));
+  }
+  .sidebar::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: #000;
+    opacity: calc(var(--pane-progress, 0) * .15);
+    pointer-events: none;
+  }
+  .pane {
+    transform: translateX(var(--pane-x, 100%));
+    box-shadow: -1px 0 0 var(--color-separator), -8px 0 24px rgba(0, 0, 0, .08);
+  }
   .icon-btn.only-narrow { display: inline-grid; }
-  .app[data-view="chat"] .sidebar { display: none; }
-  .app:not([data-view="chat"]) .pane { display: none; }
   .bubble { max-width: 85%; }
+}
+
+/* Reduced motion: panels and the menu arrive at once (motion.js), then fade in instead of sliding. */
+@keyframes fade-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  dialog.drawer[open] { animation: fade-in 200ms var(--ease-out); }
+}
+@media (prefers-reduced-motion: reduce) and (max-width: 760px) {
+  .app[data-view="chat"] .pane,
+  .app[data-view="list"] .sidebar { animation: fade-in 200ms var(--ease-out); }
 }

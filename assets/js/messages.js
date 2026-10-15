@@ -4,6 +4,7 @@ import { api } from './api.js';
 import { renderChats } from './chats.js';
 import { sendRead } from './socket.js';
 import { clearComposerIf } from './composer.js';
+import { setView } from './nav.js';
 
 /* ── messages ───────────────────────────── */
 
@@ -130,7 +131,7 @@ export async function openChat(chatId) {
   state.catchUpDue = false;
   state.seenIds.clear();
 
-  $('app').dataset.view = 'chat';
+  setView('chat');
   $('pane-empty').hidden = true;
   $('pane-chat').hidden = false;
   $('message-rows').textContent = '';
@@ -156,9 +157,12 @@ export function showPeer(peer) {
   $('peer-status').textContent = lastSeenText(peer);
 }
 
-$('back').addEventListener('click', () => {
-  $('app').dataset.view = 'list';
+/** Back to the list: the back button, or a swipe that hands over its `velocity`. */
+export function leaveChat({ velocity } = {}) {
+  setView('list', { velocity });
   state.activeId = null;      // socket stays open — other chats keep updating
   state.opened += 1;
   renderChats();
-});
+}
+
+$('back').addEventListener('click', () => leaveChat());

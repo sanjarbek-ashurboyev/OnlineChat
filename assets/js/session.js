@@ -5,6 +5,7 @@ import { loadChats } from './chats.js';
 import { closeSocket, connectInbox } from './socket.js';
 import { composer, settleSend } from './composer.js';
 import { renderMe } from './profile.js';
+import { closeMenu, setView } from './nav.js';
 
 /* ── auth screen ────────────────────────── */
 
@@ -74,6 +75,7 @@ export function signOut() {
   // refreshes still in flight are dropped, and the socket's handlers and timers are gone.
   state.session += 1;
   state.renewal = null;
+  closeMenu({ instant: true });
   closeSocket();
   clearTimeout(state.startTimer);
   settleSend();
@@ -122,7 +124,7 @@ export async function start() {
   $('auth-error').hidden = true;
   $('auth').hidden = true;
   $('app').hidden = false;
-  $('app').dataset.view = 'list';
+  setView('list', { instant: true });
   renderMe();
   // The socket doesn't need the chat list, so a failed list must not keep it closed (M-12).
   connectInbox();          // one socket for every conversation

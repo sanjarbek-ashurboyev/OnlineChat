@@ -86,13 +86,14 @@ class BrowserTestCase(ChannelsLiveServerTestCase):
         self.me, self.friend = make_user(1), make_user(2)
         self.chat, _ = Chat.objects.get_or_create_chat(self.me, self.friend)
 
-    def open_app(self, user=None, refresh=False, setup=None, connected=True):
+    def open_app(self, user=None, refresh=False, setup=None, connected=True, **context_options):
         """Load the app signed in as `user`, the way a returning visitor arrives.
 
         refresh: also store a refresh token. setup(page): runs before the page loads (routes, clock).
+        context_options: for the browser context, e.g. a phone's viewport and touch screen.
         """
         user = user or self.me
-        context = self.browser.new_context()
+        context = self.browser.new_context(**context_options)
         self.addCleanup(context.close)
         script = f"localStorage.setItem('access', '{token_for(user)}');"
         if refresh:
@@ -105,6 +106,11 @@ class BrowserTestCase(ChannelsLiveServerTestCase):
         if connected:
             expect(page.locator('#conn-state.is-open')).to_be_attached()
         return page
+
+    def log_out(self, page):
+        """Log out the way a user does: the ☰ menu, then "Log out"."""
+        page.locator('#open-menu').click()
+        page.locator('#logout').click()
 
     def wait_until(self, page, condition, timeout=5):
         """Poll a Python-side condition (a held route arriving, a row in the database)."""
@@ -284,7 +290,7 @@ class SessionLifecycleTests(BrowserTestCase):
         page.evaluate("state.access = 'expired'; void loadChats().catch(() => {})")  # its 401 starts a refresh
         self.wait_until(page, lambda: held)
 
-        page.locator('#logout').click()
+        self.log_out(page)
         held[0].continue_()
         page.wait_for_timeout(500)
 
@@ -299,7 +305,7 @@ class SessionLifecycleTests(BrowserTestCase):
         page.evaluate('void loadChats()')  # void: don't wait for the request we're holding
         self.wait_until(page, lambda: held)
 
-        page.locator('#logout').click()
+        self.log_out(page)
         self.log_in(page, other)
         held[0].continue_()
         page.wait_for_timeout(500)
@@ -317,7 +323,7 @@ class SessionLifecycleTests(BrowserTestCase):
         self.send(page, 'echo never comes')
         self.wait_until(page, lambda: Message.objects.filter(text='echo never comes').exists())
 
-        page.locator('#logout').click()
+        self.log_out(page)
         self.log_in(page, self.me)
         page.get_by_role('button', name='User 2').click()
         self.send(page, 'after logging back in')
@@ -493,7 +499,7 @@ class SessionLifecycleTests(BrowserTestCase):
         page.evaluate("void api('/auth/profile/', {method: 'PATCH', body: {first_name: 'Set by account 1'}})")
         self.wait_until(page, lambda: held)
 
-        page.locator('#logout').click()
+        self.log_out(page)
         self.log_in(page, other)
         held[0].fulfill(status=401, content_type='application/json', body='{"detail": "Token expired"}')
         page.wait_for_timeout(1000)
@@ -713,7 +719,7 @@ class RefreshRotationTests(BrowserTestCase):
     def test_logout_retires_the_refresh_token_on_the_server(self):
         page = self.open_app(refresh=True)
         with page.expect_request('**/api/v1/auth/logout/', timeout=5000):
-            page.locator('#logout').click()
+            self.log_out(page)
         self.wait_until(page, lambda: LoginSession.objects.filter(user=self.me, ended_at__isnull=False).exists())
 
     def second_tab(self, page):
@@ -741,7 +747,7 @@ class RefreshRotationTests(BrowserTestCase):
         self.assertNotEqual(renewed, second.evaluate('state.refresh'))
 
         with second.expect_response('**/api/v1/auth/logout/') as logout:
-            second.locator('#logout').click()
+            self.log_out(second)
         self.assertEqual(logout.value.status, 200)
         self.assertFalse(self.still_renews(renewed), 'the other tab is still signed in')
 
@@ -759,7 +765,7 @@ class RefreshRotationTests(BrowserTestCase):
         self.wait_until(first, lambda: held)
 
         with second.expect_response('**/api/v1/auth/logout/') as logout:
-            second.locator('#logout').click()
+            self.log_out(second)
         self.assertEqual(logout.value.status, 200)
         route, answer = held[0]
         renewed = answer.json()['refresh']
@@ -860,7 +866,7 @@ class RefreshRotationTests(BrowserTestCase):
                 route.fulfill(status=429, headers={'Retry-After': '1'}, json={'detail': 'Request was throttled.'})
 
         page.route('**/api/v1/auth/logout/', refuse_once)
-        page.locator('#logout').click()
+        self.log_out(page)
         self.wait_until(page, lambda: 200 in answers, timeout=10)
         self.assertEqual(answers[0], 429)
         self.assertFalse(self.still_renews(token))
@@ -869,7 +875,7 @@ class RefreshRotationTests(BrowserTestCase):
         page = self.open_app(refresh=True)
         token = page.evaluate('state.refresh')
         page.route('**/api/v1/auth/logout/', lambda route: route.abort())
-        page.locator('#logout').click()
+        self.log_out(page)
         expect(page.locator('#auth')).to_be_visible()
         self.wait_until(page, lambda: page.evaluate('pendingRevokes().length') == 1)   # the queue write waits for a lock
         page.unroute('**/api/v1/auth/logout/')
@@ -918,7 +924,7 @@ class RefreshRotationTests(BrowserTestCase):
                 route.continue_()
 
         page.route('**/api/v1/auth/logout/', hold_the_first)
-        page.locator('#logout').click()
+        self.log_out(page)
         self.wait_until(page, lambda: attempts)
         self.fast_forward_after_a_pause(page, 11_000)    # the time limit ends the first request
         self.fast_forward_after_a_pause(page, 1_100)     # and the retry's turn comes
@@ -963,3 +969,76 @@ class RefreshRotationTests(BrowserTestCase):
         first.wait_for_timeout(300)
         self.assertEqual(len(sent), 1, 'a confirmed logout was sent again')
         self.assertEqual(first.evaluate('pendingRevokes().length'), 0, 'a confirmed logout is queued again')
+
+
+class LayoutTests(BrowserTestCase):
+    """F-03: the connection in words, the ☰ menu, and the phone's slide-over chat with swipe-back."""
+
+    PHONE = {'viewport': {'width': 390, 'height': 844}, 'has_touch': True, 'is_mobile': True}
+
+    def test_the_connection_is_shown_in_words(self):
+        # A coloured dot told nothing to someone who can't tell red from green.
+        page = self.open_app()
+        expect(page.locator('#conn-state')).to_have_text('Chats')
+        page.get_by_role('button', name='User 2').click()
+        expect(page.locator('#peer-status')).to_be_visible()
+
+        page.context.set_offline(True)
+        page.evaluate('state.ws.close()')
+        expect(page.locator('#conn-state')).to_have_text('Waiting for network…')
+        expect(page.locator('#peer-conn')).to_have_text('Waiting for network…')
+        expect(page.locator('#peer-status')).to_be_hidden()
+
+        page.context.set_offline(False)   # back online: reconnect now, not after the backoff
+        expect(page.locator('#conn-state.is-open')).to_have_text('Chats')
+        expect(page.locator('#peer-status')).to_be_visible()
+
+    def test_the_menu_opens_and_escape_closes_it(self):
+        page = self.open_app()
+        expect(page.locator('#logout')).to_be_hidden()
+        page.locator('#open-menu').click()
+        expect(page.locator('#logout')).to_be_visible()
+        expect(page.locator('#me-name')).to_have_text('User 1')
+        page.keyboard.press('Escape')
+        expect(page.locator('#menu')).to_be_hidden()
+        expect(page.locator('#open-menu')).to_be_focused()
+
+    def test_on_a_phone_a_chat_slides_over_the_list_and_back(self):
+        page = self.open_app(**self.PHONE)
+        page.get_by_role('button', name='User 2').click()
+        expect(page.locator('#app')).to_have_attribute('data-view', 'chat')
+        expect(page.locator('.sidebar')).to_have_attribute('inert', '')   # off screen: no focus, no screen reader
+        page.locator('#back').click()
+        expect(page.locator('#app')).to_have_attribute('data-view', 'list')
+        expect(page.locator('.pane')).to_have_attribute('inert', '')
+        self.assertIsNone(page.evaluate('state.activeId'))
+
+    def swipe(self, page, xs, interval_ms):
+        """A finger on the touch screen, through Chromium's own touch input: down, moves, lift."""
+        cdp = page.context.new_cdp_session(page)
+
+        def send(kind, points):
+            cdp.send('Input.dispatchTouchEvent', {'type': kind, 'touchPoints': points})
+
+        send('touchStart', [{'x': xs[0], 'y': 420}])
+        for x in xs[1:]:
+            page.wait_for_timeout(interval_ms)
+            send('touchMove', [{'x': x, 'y': 420}])
+        send('touchEnd', [])
+
+    def test_on_a_phone_a_swipe_right_goes_back(self):
+        page = self.open_app(**self.PHONE)
+        page.get_by_role('button', name='User 2').click()
+        expect(page.locator('.sidebar')).to_have_attribute('inert', '')
+        self.swipe(page, list(range(40, 321, 20)), 16)    # fast: the release speed carries it the rest of the way
+        expect(page.locator('#app')).to_have_attribute('data-view', 'list')
+        self.assertIsNone(page.evaluate('state.activeId'))
+
+    def test_on_a_phone_a_short_slow_drag_springs_back(self):
+        page = self.open_app(**self.PHONE)
+        page.get_by_role('button', name='User 2').click()
+        expect(page.locator('.sidebar')).to_have_attribute('inert', '')
+        self.swipe(page, list(range(40, 101, 6)), 40)     # 60 px, slowly: neither far nor fast enough
+        page.wait_for_timeout(600)
+        expect(page.locator('#app')).to_have_attribute('data-view', 'chat')
+        self.assertIsNotNone(page.evaluate('state.activeId'))

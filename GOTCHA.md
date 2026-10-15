@@ -80,6 +80,10 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
   before drawing it. → [P-21](docs/learning-journal/problems-and-solutions.md#p-21--four-frontend-bugs-with-no-tests-to-catch-them)
 - **The frontend is ES modules: their names are private.** Browser tests (and DevTools) reach `state`, `api` & co.
   only through the list `assets/js/main.js` puts on `window`. A test calling a new name needs it added there (session 039).
+- **`touch-action` counts on the scrolling element a touch starts in**, not on an outer wrapper. Set it on the
+  scroller, or the browser keeps sideways drags for itself. → [P-47](docs/learning-journal/problems-and-solutions.md#p-47--the-swipe-back-gesture-never-arrived-the-wrong-element-had-touch-action)
+- **Logging out in a browser test goes through the ☰ menu:** use `self.log_out(page)`, not a click on `#logout`
+  (it sits in a closed `<dialog>`, session 041).
 - **In a `subTest` loop, keep every assertion of a case inside its `with self.subTest(...)`.** One outside it ends
   the test at the first failure, and the later cases never run.
 - **`page.evaluate` waits for a promise you return.** If the test holds that promise's request (`page.route`),
