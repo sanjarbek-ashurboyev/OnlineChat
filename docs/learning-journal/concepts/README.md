@@ -19,6 +19,7 @@ Read these in order the first time. Each one builds on the ones before it.
 | 13 | [API contracts and OpenAPI](api-contracts-and-openapi.md) | 8 | The schema is a promise; fail the build on every guess |
 | 14 | [Health checks: liveness and readiness](health-checks.md) | 2 | "Am I running?" and "can I serve right now?" are different questions |
 | 15 | [Connection pools](connection-pools.md) | 7 | Borrow an open connection, but check it still works |
+| 16 | [Frontend architecture: plain DOM vs a framework](frontend-architecture.md) | 1 | Change the page yourself, or describe it and let a framework change it |
 
 Words used everywhere:
 
