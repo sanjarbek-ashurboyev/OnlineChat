@@ -604,6 +604,77 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
 - **Lesson:** near the ceiling, a single before/after pair can't show a 250-user difference.
 
 
+## P-39 · One refresh token, two parallel requests, two new tokens
+
+- **Session:** [036](sessions/036-login-sessions.md)
+- **Observed:** on `main` (`35eb53a`), two requests to `/auth/token/refresh/` with the same token both answered 200,
+  and both new tokens kept working: 20 of 20 tries against a real Daphne, every time in a test that holds both
+  requests at the same point.
+- **Root cause (Confirmed, from SimpleJWT 5.5.1's code and the test):** "check, then act" in separate statements.
+  Each request checks the blacklist (`SELECT`), then blacklists with `get_or_create`; the slower one gets the existing
+  row back (`created=False`), which no one checks.
+- **Fix:** a `LoginSession` row per login holds the id of the one usable refresh token; refresh swaps it with one
+  `UPDATE ... WHERE refresh_jti = <presented>`, and 0 rows changed means 401 (decision 016).
+- **Lesson:** `get_or_create` doesn't claim anything. Make the write carry the condition and read the row count.
+
+## P-40 · Logout from a tab with an older token didn't end the login
+
+- **Session:** [036](sessions/036-login-sessions.md)
+- **Observed:** tab A renewed R0 → R1; tab B, still holding R0, logged out: 401, and R1 kept working. The same when B
+  logged out while A's renewal was on its way back.
+- **Root cause (Confirmed):** logout blacklisted *one token*, and R0 was already blacklisted by A's renewal. Nothing
+  connected R0 and R1 as the same login.
+- **Fix:** every refresh token of a login carries the login's id (`sid`); logout ends the session row, whichever of
+  its tokens it gets.
+- **Lesson:** revoke the thing the user means ("this login"), not the piece of it the client happens to hold.
+
+## P-42 · After the blacklist app was removed, deleting a user failed
+
+- **Session:** [036](sessions/036-login-sessions.md) (follow-up) · found by Codex's review of PR #46
+- **Observed:** on a copy of the dev database (migrated on `main`, so with SimpleJWT's blacklist tables), with PR #46's
+  code: deleting a user who had a row in `token_blacklist_outstandingtoken` failed with `IntegrityError: update or
+  delete on table "accounts_user" violates foreign key constraint ... on table "token_blacklist_outstandingtoken"`.
+  Every test passed: test databases are built fresh, without the app, so they never had those tables.
+- **Root cause (Confirmed):** removing an app from `INSTALLED_APPS` doesn't touch its tables. Django deletes related
+  rows itself (in Python) before deleting a user, but only for models it knows. With the app gone it didn't know
+  these, and the database's foreign key refused the delete.
+- **Fix:** migration `accounts/migrations/0004_drop_token_blacklist_tables.py` drops both tables if they exist and
+  deletes the app's rows from `django_migrations`, so a rollback's `migrate` would build them again. Test
+  `OldBlacklistTablesTests` builds the old tables with a user's row, fails on the old code (SQLite and Postgres), passes
+  now; the migration was also run on a copy of the dev database with a real row.
+- **Lesson:** removing an app is a migration too. Test upgrades on a database migrated by the *previous* release.
+
+## P-43 · A tab that lost a refresh race ended the other tab's login
+
+- **Session:** [036](sessions/036-login-sessions.md) (follow-up) · found by Codex's review of PR #46
+- **Observed:** two tabs hold R0 and both need a new token. The server swaps R0 → R1 for tab A; tab B's R0 is refused
+  before A has saved R1. B signed out through `logout()`, which sends `POST /auth/logout/` with R0, and since P-40 that
+  ends the whole login, so A's R1 died too. Browser test: B sent the logout request (`[<Request .../auth/logout/>] != []`).
+- **Root cause (Confirmed):** two things. Tabs renewed independently, so one could lose; and the automatic sign-out
+  after a refused token used the same `logout()` as the button, which since P-40 ends the login for every tab.
+- **Fix:** `assets/app.js`. Tabs renew one at a time under a Web Lock (`navigator.locks.request('refresh-token', …)`),
+  and each first takes a newer token another tab saved (`adoptStoredToken()`). A refused token calls `signOut()`,
+  which forgets the tokens in this tab only; only the button calls `logout()`. Two browser tests, both failing on the
+  old code.
+- **Lesson:** a fix that makes an action stronger (logout now ends *every* tab) changes every caller of it. Check who
+  else calls it, and for what reason.
+
+## P-46 · One hung refresh request stopped every tab from renewing
+
+- **Session:** [036](sessions/036-login-sessions.md) (follow-up, round 2) · found by Codex's review of PR #46
+- **Observed:** tab A sends a refresh and the answer never comes; tab B needs a new token too. B waited for the Web
+  Lock for ever: its refresh was never even sent. Browser test (A's refresh route held, then the clock moved 11 s):
+  `condition never became true` — B had not renewed.
+- **Root cause (Confirmed, from the code and the test):** the fix for P-43 holds the `refresh-token` lock for as long
+  as `spendRefreshToken()` runs, and that was `fetch(...)` followed by `res.json()` with no time limit. A browser
+  waits a long time for a silent server, so one stuck request holds the lock, and with it every tab's renewal.
+- **Fix:** `assets/app.js`. `postRefresh()` makes the request with an `AbortController` and aborts it after
+  `REFRESH_TIMEOUT_MS` (10 s); the signal covers the body too. An abort throws `Error('refresh timed out')`, which
+  callers already treat like a network error: keep the tokens, retry later, don't sign out. The lock is released when
+  the function ends, in every case. One browser test, failing on the old code.
+- **Lesson:** a lock held across a network call needs a time limit on the call. The lock's holder decides how long
+  everyone else waits.
+
 ## P-38 · `CONN_HEALTH_CHECKS` still failed with a pool full of dead connections
 
 - **Session:** [035](sessions/035-dead-pooled-connections.md)

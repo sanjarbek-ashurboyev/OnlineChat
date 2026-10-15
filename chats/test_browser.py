@@ -15,10 +15,9 @@ from datetime import timedelta
 from channels.testing import ChannelsLiveServerTestCase
 from django.db import connection
 from django.utils import timezone
-from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
-from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.test import APIClient
 
-from accounts.models import User
+from accounts.models import LoginSession, User
 from chats.models import Block, Chat, Message
 from test_helpers import PASSWORD, make_user, phone, token_for
 
@@ -95,7 +94,7 @@ class BrowserTestCase(ChannelsLiveServerTestCase):
         self.addCleanup(context.close)
         script = f"localStorage.setItem('access', '{token_for(user)}');"
         if refresh:
-            script += f"localStorage.setItem('refresh', '{RefreshToken.for_user(user)}');"
+            script += f"localStorage.setItem('refresh', '{LoginSession.objects.start(user)}');"
         context.add_init_script(script)
         page = context.new_page()
         if setup:
@@ -705,13 +704,135 @@ class RefreshRotationTests(BrowserTestCase):
     def test_another_accounts_token_is_never_picked_up(self):
         page = self.open_app(refresh=True)
         page.evaluate(self.RENEW_IN_ANOTHER_TAB)
-        page.evaluate(f"localStorage.setItem('refresh', '{RefreshToken.for_user(self.friend)}')")
+        page.evaluate(f"localStorage.setItem('refresh', '{LoginSession.objects.start(self.friend)}')")
         result = page.evaluate("state.access = 'expired'; api('/auth/profile/').then((p) => p.id, (e) => e.status)")
         self.assertEqual(result, 401)
 
     def test_logout_retires_the_refresh_token_on_the_server(self):
         page = self.open_app(refresh=True)
-        token = page.evaluate('state.refresh')
         with page.expect_request('**/api/v1/auth/logout/', timeout=5000):
             page.locator('#logout').click()
-        self.wait_until(page, lambda: BlacklistedToken.objects.filter(token__token=token).exists())
+        self.wait_until(page, lambda: LoginSession.objects.filter(user=self.me, ended_at__isnull=False).exists())
+
+    def second_tab(self, page):
+        """Another tab of the same browser: it shares localStorage, but holds its own copy of the tokens."""
+        tab = page.context.new_page()
+        tab.goto(self.live_server_url)
+        expect(tab.locator('#conn-state.is-open')).to_be_attached()
+        return tab
+
+    def still_renews(self, refresh):
+        return APIClient().post('/api/v1/auth/token/refresh/', {'refresh': refresh}).status_code == 200
+
+    def test_logout_from_a_tab_with_an_older_token_ends_the_login(self):
+        # Codex review of #40: tab A renewed R0 -> R1; tab B still held R0 and logged out with it.
+        first = self.open_app(refresh=True)
+        second = self.second_tab(first)
+        first.evaluate("state.access = 'expired'; api('/auth/profile/')")  # renews: R0 -> R1
+        renewed = first.evaluate('state.refresh')
+        self.assertNotEqual(renewed, second.evaluate('state.refresh'))
+
+        with second.expect_response('**/api/v1/auth/logout/') as logout:
+            second.locator('#logout').click()
+        self.assertEqual(logout.value.status, 200)
+        self.assertFalse(self.still_renews(renewed), 'the other tab is still signed in')
+
+    def test_logout_while_another_tab_is_renewing_ends_the_new_token_too(self):
+        # The server has already swapped R0 for R1 when B logs out with R0; A only receives R1 afterwards.
+        first = self.open_app(refresh=True)
+        second = self.second_tab(first)
+        held = []
+
+        def renew_but_hold_the_answer(route):
+            held.append((route, route.fetch()))
+
+        first.route('**/api/v1/auth/token/refresh/', renew_but_hold_the_answer)
+        first.evaluate("state.access = 'expired'; void api('/auth/profile/').catch(() => {})")
+        self.wait_until(first, lambda: held)
+
+        with second.expect_response('**/api/v1/auth/logout/') as logout:
+            second.locator('#logout').click()
+        self.assertEqual(logout.value.status, 200)
+        route, answer = held[0]
+        renewed = answer.json()['refresh']
+        route.fulfill(response=answer)
+
+        self.assertFalse(self.still_renews(renewed), 'the renewal that crossed the logout still works')
+
+    def hold_renewal(self, page):
+        """The server renews the token at once, but `page` only gets the answer when the test fulfils it."""
+        held = []
+        page.route('**/api/v1/auth/token/refresh/', lambda route: held.append((route, route.fetch())))
+        return held
+
+    def logouts(self, page):
+        sent = []
+        page.on('request', lambda request: sent.append(request) if request.url.endswith('/auth/logout/') else None)
+        return sent
+
+    def test_a_tab_that_loses_a_refresh_race_waits_for_the_winner(self):
+        # Codex review of #46: both tabs hold R0 and need a new token. The server gives the first R1, and refuses
+        # R0 to the second before the first has saved R1. The second signed out, and its logout ended the login,
+        # R1 included. Now one tab renews at a time, and the second uses what the first saved.
+        first = self.open_app(refresh=True)
+        second = self.second_tab(first)
+        self.assertTrue(second.evaluate('!!navigator.locks'))
+        logouts = self.logouts(second)
+        held = self.hold_renewal(first)
+        first.evaluate("state.access = 'expired'; void api('/auth/profile/').catch(() => {})")
+        self.wait_until(first, lambda: held)
+
+        second.evaluate("state.access = 'expired'; void start()")   # what a page load does
+        second.wait_for_timeout(300)   # without the wait, its refresh would have been refused by now
+        route, answer = held[0]
+        route.fulfill(response=answer)
+
+        self.assertEqual(second.evaluate("api('/auth/profile/').then((p) => p.id, (e) => e.status)"), self.me.id)
+        self.assertEqual(logouts, [])
+        self.assertFalse(LoginSession.objects.filter(user=self.me, ended_at__isnull=False).exists())
+
+    def test_a_refresh_that_never_answers_does_not_stop_another_tab_from_renewing(self):
+        # Codex review of #46, round 2: the renewal lock was held across the request, with no limit. One hung
+        # request in tab A left tab B waiting for the lock for ever. Now A gives up after a time limit.
+        first = self.open_app(refresh=True, setup=lambda page: page.clock.install())   # the clock is shared by both tabs
+        second = self.second_tab(first)
+        logouts = self.logouts(first)
+        hung = []
+        first.route('**/api/v1/auth/token/refresh/',
+                    lambda route: route.continue_() if hung else hung.append(route))   # the first is never answered
+        first.evaluate("state.access = 'expired'; void api('/auth/profile/').catch(() => {})")
+        self.wait_until(first, lambda: hung)
+
+        second.evaluate("""state.access = 'expired';
+            window.outcome = undefined;
+            void api('/auth/profile/').then((p) => p.id, (e) => e.status).then((outcome) => { window.outcome = outcome; })""")
+        first.clock.fast_forward(11_000)
+
+        self.wait_until(second, lambda: second.evaluate('window.outcome !== undefined'))
+        self.assertEqual(second.evaluate('window.outcome'), self.me.id)
+        # The tab that gave up isn't signed out: a timeout says nothing about its token.
+        self.assertEqual(logouts, [])
+        expect(first.locator('#app')).to_be_visible()
+        self.assertEqual(first.evaluate("api('/auth/profile/').then((p) => p.id, (e) => e.status)"), self.me.id)
+        self.assertFalse(LoginSession.objects.filter(user=self.me, ended_at__isnull=False).exists())
+        hung[0].abort()   # settle the held route, or closing the context logs a CancelledError
+
+    def test_a_tab_that_loses_a_refresh_race_without_locks_leaves_the_login_alone(self):
+        # Without navigator.locks (an old browser, plain http off localhost) the race can still be lost. The
+        # losing tab may sign itself out, but its token was refused: it must not end the login the winner renewed.
+        first = self.open_app(refresh=True)
+        second = self.second_tab(first)
+        for tab in (first, second):
+            tab.evaluate("Object.defineProperty(navigator, 'locks', {value: undefined})")
+        logouts = self.logouts(second)
+        held = self.hold_renewal(first)
+        first.evaluate("state.access = 'expired'; void api('/auth/profile/').catch(() => {})")
+        self.wait_until(first, lambda: held)
+
+        second.evaluate("state.access = 'expired'; void start()")
+        expect(second.locator('#auth')).to_be_visible()   # it lost: R0 was refused
+        route, answer = held[0]
+        route.fulfill(response=answer)
+
+        self.assertEqual(logouts, [])
+        self.assertTrue(self.still_renews(answer.json()['refresh']), "the winner's login was ended")

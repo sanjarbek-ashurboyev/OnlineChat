@@ -56,7 +56,6 @@ INSTALLED_APPS = [
     'rest_framework',
     'drf_spectacular',
     'rest_framework_simplejwt',
-    'rest_framework_simplejwt.token_blacklist',
 ]
 
 MIDDLEWARE = [
@@ -212,11 +211,11 @@ REST_FRAMEWORK = {
 }
 
 
-# T-07: each refresh token works once, and logout blacklists it. Only refresh tokens are checked against
-# the blacklist, so ordinary requests and sockets cost no extra query. `manage.py flushexpiredtokens` prunes it.
+# T-07: each refresh token works once, and logout ends the whole login. Both are tracked per login in
+# accounts.LoginSession (decision 016), not in SimpleJWT's blacklist, which let one token be spent twice at once.
+# Only refreshes and logouts read it, so ordinary requests and sockets cost no extra query.
 SIMPLE_JWT = {
     'ROTATE_REFRESH_TOKENS': True,
-    'BLACKLIST_AFTER_ROTATION': True,
 }
 
 

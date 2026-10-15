@@ -1,8 +1,18 @@
 from django.contrib.auth.base_user import BaseUserManager
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth.models import AbstractUser
-from django.db.models import DateTimeField, ImageField
+from django.db.models import (
+    CASCADE,
+    CharField,
+    DateTimeField,
+    ForeignKey,
+    ImageField,
+    Manager,
+    Model,
+)
 from phonenumber_field.modelfields import PhoneNumberField
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.utils import datetime_from_epoch
 
 
 # Create your models here.
@@ -54,3 +64,27 @@ class User(AbstractUser):
 
 
     
+
+
+class LoginSessionManager(Manager):
+    def start(self, user):
+        """The refresh token of a new login. Its `sid` claim names the session and survives every rotation."""
+        token = RefreshToken.for_user(user)
+        session = self.create(user=user, refresh_jti=token['jti'], expires_at=datetime_from_epoch(token['exp']))
+        token['sid'] = session.pk
+        return token
+
+
+class LoginSession(Model):
+    """One login: one browser or device. Its refresh token changes on every refresh; the session stays.
+
+    Only the refresh token whose id is `refresh_jti` works, so each one works once. Logout sets `ended_at` and
+    ends the login whichever of its tokens the client still had.
+    """
+    user = ForeignKey(User, on_delete=CASCADE, related_name='login_sessions')
+    refresh_jti = CharField(max_length=255)
+    created_at = DateTimeField(auto_now_add=True)
+    expires_at = DateTimeField()
+    ended_at = DateTimeField(null=True, blank=True)
+
+    objects = LoginSessionManager()
