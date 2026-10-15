@@ -22,6 +22,7 @@ choose differently. If new evidence changes a decision, update the file and say 
 | [015](015-check-pooled-connections.md) | Check each pooled connection; on a dead one, check them all | Accepted | [035](../sessions/035-dead-pooled-connections.md) |
 | [016](016-login-sessions.md) | A row per login: single-use refresh tokens and logout by session | Accepted | [036](../sessions/036-login-sessions.md) |
 | [017](017-logout-has-its-own-throttle.md) | Logout has its own throttle (60/min), and the browser retries it | Accepted | [037](../sessions/037-logout-throttle.md) |
+| [018](018-plain-js-not-react.md) | The redesign stays in plain JavaScript, not React | Accepted | [038](../sessions/038-frontend-review-and-plan.md) |
 
 The bigger scaling decisions are in the plan, [docs/scaling/02-plan.md](../../scaling/02-plan.md):
 - **Stage 0:** 0.1 where secrets live, 0.2 rate limiting, 0.3 making live delivery recoverable.
