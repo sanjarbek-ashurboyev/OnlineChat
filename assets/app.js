@@ -5,6 +5,7 @@ const PING_MS = 30000;          // presence keys expire after 90s
 const PONG_GRACE_MS = 10000;    // no frame for PING_MS + this: the connection is dead (Codex audit H-06)
 const ACK_TIMEOUT_MS = 10000;   // no echo by then: look in the history (Codex audit H-06)
 const START_RETRY_MS = 5000;    // the server couldn't be reached at startup (Codex audit M-12)
+const REFRESH_TIMEOUT_MS = 10000;   // a renewal holds the lock all tabs share, so it must end (Codex review of #46)
 const AVATAR_FALLBACK =
   'data:image/svg+xml;utf8,' + encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">' +
@@ -100,21 +101,38 @@ async function spendRefreshToken() {
   adoptStoredToken();
   if (!state.refresh) return false;
   const session = state.session;
-  const res = await fetch(`${API}/auth/token/refresh/`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh: state.refresh }),
-  });
+  const { res, data } = await postRefresh(state.refresh);
   if (res.status === 400 || res.status === 401) {
     // Without the lock, another tab can still have won: try what it saved.
     if (session === state.session && adoptStoredToken()) return spendRefreshToken();
     return false;
   }
   if (!res.ok) throw Object.assign(new Error('refresh failed'), { status: res.status });
-  const data = await res.json();
   if (session !== state.session) return false;
   saveTokens(data.access, data.refresh);
   return true;
+}
+
+/** One request to the refresh endpoint, answer body included, ended after REFRESH_TIMEOUT_MS. A request that
+ *  hangs would keep this tab holding the lock, and no other tab could renew. Timing out throws like any network
+ *  error: the caller retries later and keeps its tokens. */
+async function postRefresh(refresh) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${API}/auth/token/refresh/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh }),
+      signal: controller.signal,
+    });
+    return { res, data: res.ok ? await res.json() : null };
+  } catch (err) {
+    if (controller.signal.aborted) throw new Error('refresh timed out');
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Another tab of the same account may have renewed, which retired our token. It saved the new one;

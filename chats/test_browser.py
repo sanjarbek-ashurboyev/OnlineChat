@@ -791,6 +791,32 @@ class RefreshRotationTests(BrowserTestCase):
         self.assertEqual(logouts, [])
         self.assertFalse(LoginSession.objects.filter(user=self.me, ended_at__isnull=False).exists())
 
+    def test_a_refresh_that_never_answers_does_not_stop_another_tab_from_renewing(self):
+        # Codex review of #46, round 2: the renewal lock was held across the request, with no limit. One hung
+        # request in tab A left tab B waiting for the lock for ever. Now A gives up after a time limit.
+        first = self.open_app(refresh=True, setup=lambda page: page.clock.install())   # the clock is shared by both tabs
+        second = self.second_tab(first)
+        logouts = self.logouts(first)
+        hung = []
+        first.route('**/api/v1/auth/token/refresh/',
+                    lambda route: route.continue_() if hung else hung.append(route))   # the first is never answered
+        first.evaluate("state.access = 'expired'; void api('/auth/profile/').catch(() => {})")
+        self.wait_until(first, lambda: hung)
+
+        second.evaluate("""state.access = 'expired';
+            window.outcome = undefined;
+            void api('/auth/profile/').then((p) => p.id, (e) => e.status).then((outcome) => { window.outcome = outcome; })""")
+        first.clock.fast_forward(11_000)
+
+        self.wait_until(second, lambda: second.evaluate('window.outcome !== undefined'))
+        self.assertEqual(second.evaluate('window.outcome'), self.me.id)
+        # The tab that gave up isn't signed out: a timeout says nothing about its token.
+        self.assertEqual(logouts, [])
+        expect(first.locator('#app')).to_be_visible()
+        self.assertEqual(first.evaluate("api('/auth/profile/').then((p) => p.id, (e) => e.status)"), self.me.id)
+        self.assertFalse(LoginSession.objects.filter(user=self.me, ended_at__isnull=False).exists())
+        hung[0].abort()   # settle the held route, or closing the context logs a CancelledError
+
     def test_a_tab_that_loses_a_refresh_race_without_locks_leaves_the_login_alone(self):
         # Without navigator.locks (an old browser, plain http off localhost) the race can still be lost. The
         # losing tab may sign itself out, but its token was refused: it must not end the login the winner renewed.
