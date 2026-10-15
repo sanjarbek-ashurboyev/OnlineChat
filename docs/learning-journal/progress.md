@@ -1,6 +1,6 @@
 # Progress
 
-*Updated: 2026-10-15 (session 038).*
+*Updated: 2026-10-15 (session 039).*
 
 **Status words:** **Done** = code written, tests or checks run and passing, committed.
 **Partial** = some of the acceptance criteria are met. **Blocked** = waiting on something outside
@@ -15,7 +15,7 @@ our control. **Planned** = not started. Code that's written but not verified is 
 were already fixed on `main` before this journal started.
 
 **In parallel from 2026-10-15: the frontend redesign**, from [docs/frontend/plan.md](../frontend/plan.md)
-(Telegram's layout, Apple's feel, plain JS). Next task: F-01.
+(Telegram's layout, Apple's feel, plain JS). F-01 done (session 039); next task: F-02.
 
 ## Milestones
 
@@ -58,6 +58,7 @@ were already fixed on `main` before this journal started.
 | Codex review of #38–#43, both High: one refresh token can't be spent twice at once; logout from a stale tab (or during another tab's refresh) ends the login. `LoginSession` row per login, swap in one `UPDATE`; blacklist app removed ([decision 016](decisions/016-login-sessions.md)) | **Done** on `t-07-refresh-single-use`, PR open | Reproduced on `main`: parallel refreshes `[200, 200]` (20/20 against real Daphne); stale-tab logout 401 with R1 still valid (server test and 2 two-tab browser tests). All 4 fail on the old code, pass now; `make test` 170 run, OK (18 skipped); real stack with browser tests required 207 OK; no missing migrations; Ruff clean. **Codex review of #46, round 1** (2026-10-14): a tab losing a refresh race ended the winner's login (fix: Web Lock across tabs + only the button ends the login), and deleting a user failed on databases with the old blacklist tables (fix: migration `accounts.0004`). 3 new tests, each failing on the old code first; migration and rollback rehearsed on copies of the dev database; `make test` 171 run, OK (18 skipped); real stack 210 OK. **Round 2** (2026-10-15): a refresh request that never answered kept the cross-tab lock, so no other tab could renew (fix: `AbortController`, 10 s, a timeout is a network error, not a refusal). 1 new test, failing on the old code first; `make test` 173 run, OK (skipped=20); real stack with browser tests required 213 OK; Ruff clean | [session 036](sessions/036-login-sessions.md) |
 | Codex review of #38–#43, Medium: logout is no longer blocked by the refresh limit (own `logout` scope, 60/min), and the browser keeps retrying a logout the server refused or never got ([decision 017](decisions/017-logout-has-its-own-throttle.md)) | **Done** on `t-07-logout-throttle`, PR #47 (rebased on main after #46 merged). Codex round 1 (3 Medium + 1 Low, all in the retry): queue updates under a Web Lock, a 10 s limit per attempt, the server ends a login from an expired token, no re-sending a confirmed revoke. Round 2 pending | Reproduced: 30 refreshes from one IP → logout 429, token still valid; 4 new tests fail on #46's code and pass now. Round 1: 5 more tests failed first and pass now; `make test` 177 run, OK (skipped=20); real stack with browser tests required 223 OK; Ruff clean | [session 037](sessions/037-logout-throttle.md) |
 | Frontend review and redesign plan: Telegram layout, Apple feel; plain JS, not React ([decision 018](decisions/018-plain-js-not-react.md)) | **Done** (plan only, no code) | [Plan](../frontend/plan.md) with tasks F-01…F-06 and the list of test hooks to keep | [session 038](sessions/038-frontend-review-and-plan.md) |
+| F-01 `app.js` split into 11 ES modules in `assets/js/`, no behaviour change; the tests' six names put on `window` | **Done** on `f-01-es-modules`, PR open | Baseline on `main`: browser tests 46 OK. After: no test changed; real Postgres + Redis with browser tests required 223 OK; `make test` 177 run, OK (skipped=20); Ruff clean; line-count check: every line of `app.js` moved | [session 039](sessions/039-f01-es-modules.md) |
 
 Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), and 50/50 tests pass locally.
 
@@ -130,7 +131,7 @@ That's self-reported; nothing has been tested yet, so every concept starts at
 | File uploads, storage, signals, `on_commit` | [guide](concepts/file-uploads-and-storage.md) | Explained | Session 024 | Upload a photo in the app, then replace it. Before you look, predict what `ls media/avatars` shows; then check. Then upload a 3 MB photo and read the 400. |
 | API contracts, OpenAPI, drf-spectacular | [guide](concepts/api-contracts-and-openapi.md) | Explained | Session 025 | Open `/api/schema/swagger-ui/`, press Authorize, paste an access token, and call `GET /api/v1/chats/`. Then remove `-> bool` from `get_is_online`, predict which test fails, run `make test`, and put it back. |
 | Health checks: liveness vs readiness | [guide](concepts/health-checks.md) | Explained | Session 031 | Start the app (`make up`, then `daphne -p 8002 root.asgi:application`), `curl -i localhost:8002/readyz`. Predict the answer with `REDIS_PORT=6390`, then check. Then explain why a 503 shouldn't restart the process. |
-| UI framework vs plain DOM; effects, StrictMode, stale closures | [guide](concepts/frontend-architecture.md) | Explained | Session 038 | Open the app with DevTools. Run `state.activeId` in the console, open another chat, run it again. Then explain in your own words why a socket handler that *copied* `activeId` once at start would send read receipts for the wrong chat. |
+| UI framework vs plain DOM; effects, StrictMode, stale closures; ES modules | [guide](concepts/frontend-architecture.md) | Explained | Sessions 038, 039 | Open the app with DevTools. Run `state.activeId` in the console, open another chat, run it again. Then explain in your own words why a socket handler that *copied* `activeId` once at start would send read receipts for the wrong chat. |
 | Connection pools, dead vs hung connections, checkout checks, `drain()` | [guide](concepts/connection-pools.md) | Explained | Sessions 032, 035 (+ follow-up) | With the app running (`daphne -p 8002 root.asgi:application`), `curl` `/readyz` a few times, run `docker compose restart db`, `curl` again. Predict the answers first. Then set `'check': None` in the pool options, repeat, and explain the difference. |
 
 Mark a row *Practiced* yourself after doing its exercise. It becomes *Demonstrated* when you
