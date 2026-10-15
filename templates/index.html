@@ -8,6 +8,15 @@
 </head>
 <body>
 
+<!-- Icons, drawn for this app: 24×24, stroked with the text colour. Used as <svg><use href="#i-…"/></svg>. -->
+<svg xmlns="http://www.w3.org/2000/svg" hidden>
+  <symbol id="i-person" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c1.2-3.8 4-5.8 7.5-5.8s6.3 2 7.5 5.8"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M10 4.5H6.5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2H10"/><path d="M15 8l4 4-4 4"/><path d="M19 12H9.5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M20.5 3.5 3.5 10.5l7 3 3 7z"/><path d="M20.5 3.5l-10 10"/></symbol>
+</svg>
+
 <!-- ───────────── Auth ───────────── -->
 <section id="auth" class="auth">
   <div class="auth-card">
@@ -56,13 +65,13 @@
         <strong id="me-name">…</strong>
         <span id="me-phone" class="muted"></span>
       </div>
-      <button id="open-profile" class="icon-btn" title="Profile">⚙</button>
-      <button id="logout" class="icon-btn" title="Log out">⏻</button>
+      <button id="open-profile" class="icon-btn" title="Profile" aria-label="Profile"><svg class="icon" aria-hidden="true"><use href="#i-person"/></svg></button>
+      <button id="logout" class="icon-btn" title="Log out" aria-label="Log out"><svg class="icon" aria-hidden="true"><use href="#i-logout"/></svg></button>
     </header>
 
     <form id="lookup-form" class="lookup">
       <input name="phone_number" type="tel" placeholder="Find someone by phone…" required>
-      <button type="submit" class="icon-btn" title="Search">🔍</button>
+      <button type="submit" class="icon-btn" title="Search" aria-label="Search"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg></button>
     </form>
     <p id="lookup-msg" class="lookup-msg" hidden></p>
 
@@ -76,7 +85,7 @@
 
     <div id="pane-chat" hidden>
       <header class="pane-head">
-        <button id="back" class="icon-btn only-narrow" title="Back">←</button>
+        <button id="back" class="icon-btn only-narrow" title="Back" aria-label="Back"><svg class="icon" aria-hidden="true"><use href="#i-back"/></svg></button>
         <img id="peer-avatar" class="avatar" alt="">
         <div>
           <strong id="peer-name"></strong>
@@ -93,7 +102,7 @@
       <form id="send-form" class="composer">
         <textarea id="composer-input" rows="1" placeholder="Write a message…"
                   autocomplete="off"></textarea>
-        <button type="submit" class="primary send">Send</button>
+        <button type="submit" class="primary send" title="Send" aria-label="Send"><svg class="icon" aria-hidden="true"><use href="#i-send"/></svg></button>
       </form>
       <p id="send-error" class="error composer-error" hidden></p>
     </div>

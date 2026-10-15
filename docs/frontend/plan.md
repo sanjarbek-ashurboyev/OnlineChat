@@ -71,8 +71,8 @@ never `innerHTML`. Dark mode follows the system. Phones get a list/chat view swi
 | Task | What | Done when |
 |---|---|---|
 | **F-01** | Split `app.js` into ES modules, no behaviour change | All browser tests pass unchanged |
-| **F-02** | Design system: colour roles (light/dark), type scale, SVG icons, materials, a spring helper, press feedback, reduced motion/transparency/contrast | A token sheet in CSS; icons have `aria-label` |
-| **F-03** | Layout and navigation: frosted header and composer, push/back transitions on phones with the edge swipe, ☰ drawer | **You try it on your phone** before F-04 |
+| **F-02** | Design system: colour roles (light, dark, high contrast), type scale, space and radius, SVG icons, press feedback, reduced motion | A token sheet in CSS; icons have `aria-label`; text pairs pass 4.5:1. **Done** (session 040) |
+| **F-03** | Layout and navigation: frosted header and composer (materials, reduced transparency), push/back transitions on phones with the edge swipe (the spring helper), ☰ drawer | **You try it on your phone** before F-04 |
 | **F-04** | Chat list: initials avatars, new rows, rows glide when a chat moves to the top, local filter | |
 | **F-05** | Messages: wallpaper, tails, grouping, date dividers, SVG ticks, ↓ button, load on scroll, "Not delivered" + retry | |
 | **F-06** | Login screen and the settings panel | |
@@ -95,6 +95,6 @@ Reconsider React here ([decision 018](../learning-journal/decisions/018-plain-js
 
 ## Open choices
 
-- **Bubble colours:** Telegram's light green on a patterned wallpaper (proposed) or iMessage blue on plain. Needed
-  before F-02 sets the colour roles.
+- ~~Bubble colours~~ **Chosen 2026-10-15: Telegram's light green** (dark mode: deep green), on a patterned
+  wallpaper (F-05).
 - **Order with the scaling plan:** the redesign starts now (2026-10-15); the remaining Stage 0 tasks wait or alternate.
