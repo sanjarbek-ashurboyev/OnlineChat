@@ -196,6 +196,7 @@ REST_FRAMEWORK = {
         'login_phone': '5/min',
         'register_ip': '5/hour',
         'refresh': '30/min',
+        'logout': '60/min',
         'profile_read': '120/min',
         # Starting a chat needs a phone number (T-05), so this also caps how fast one account can probe numbers.
         'chat_create': '20/hour',

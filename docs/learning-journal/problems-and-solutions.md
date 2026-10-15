@@ -628,6 +628,36 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   its tokens it gets.
 - **Lesson:** revoke the thing the user means ("this login"), not the piece of it the client happens to hold.
 
+## P-41 · Logout was blocked by the refresh limit, and the browser didn't notice
+
+- **Session:** [037](sessions/037-logout-throttle.md) · found by Codex's review of PR #40
+- **Observed:** after 30 refresh requests from one IP within a minute, `POST /auth/logout/` from that IP answered
+  **429**. The browser never looked at the answer: it signed out locally, and the refresh token kept working. Two
+  browser tests: a logout answered 429 and a logout the network dropped were never sent again.
+- **Root cause (Confirmed, from the settings and the tests):** `LogoutView` shared the `refresh` throttle scope
+  (30/min per IP), so other people's refreshes behind one NAT used up everyone's logouts; and `logout()` fired the
+  request and forgot it.
+- **Fix:** `logout` is its own scope (60/min); `revokeLogin()` in `assets/app.js` retries until the server answers,
+  honours `Retry-After`, and keeps the token in `localStorage` so the next visit finishes the job.
+- **Lesson:** a limit on a safety action needs its own counter, and the client must not treat "I asked" as "it
+  happened".
+
+**Follow-up (Codex review of #47, round 1): three gaps in the retry itself** — [session 037](sessions/037-logout-throttle.md), reproduced by tests that failed first.
+- **Two tabs lost each other's queued token.** *Cause (Confirmed):* the queue in `localStorage` was read, changed and
+  written back with nothing between two tabs, so the later write replaced the earlier. The lost login was never
+  ended and still renewed. *Fix:* the update runs under `navigator.locks.request('pending-revokes', ...)`.
+- **A hung logout was tried once.** *Cause (Confirmed):* the request had no time limit, and a promise that never
+  settles reaches neither the success nor the failure branch, so nothing scheduled a retry. *Fix:* an
+  `AbortController` ends each attempt after 10 s; an abort is retried like a network error.
+- **An expired queued token left its login alive.** *Cause (Confirmed):* the server rejected an expired token with
+  401, and the client took 401 as "nothing left to revoke", while a newer token of the same login still renewed.
+  *Fix:* the server ends the login by `sid` from any token with a valid signature, expired or not. Forged tokens
+  and access tokens are still refused.
+- **Low:** a retry scheduled in tab A re-added a token tab B had already confirmed. *Fix:* a retry checks the queue
+  first and never adds to it.
+- **Lesson:** a retry loop needs a time limit on every attempt, a lock on every shared read-change-write, and
+  an exact idea of what each answer means. 401 did not mean "done".
+
 ## P-42 · After the blacklist app was removed, deleting a user failed
 
 - **Session:** [036](sessions/036-login-sessions.md) (follow-up) · found by Codex's review of PR #46

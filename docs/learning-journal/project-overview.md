@@ -115,7 +115,9 @@ A single page in plain JavaScript (no framework):
 - **Tokens:** keeps the access and refresh tokens in `localStorage`. A 401 triggers one
   token refresh, then the request is retried. Tabs renew one at a time (`navigator.locks`), each first taking a
   newer token another tab saved. Only the "Log out" button ends the login on the server; a refused refresh token
-  only signs the tab out (session 036).
+  only signs the tab out (session 036). A logout the server didn't confirm (429, no network) is kept in
+  `localStorage` (`pendingRevokes`, updated under a Web Lock) and retried, each attempt ending after 10 s, also on
+  the next visit (session 037).
 - **Socket:** opens one socket and sends `{"action": "ping"}` every 30 s (`PING_MS`).
 - **Reconnect:** waits `1s, 2s, 4s…` up to 15 s. If the server closed with code 4401
   (not logged in), it refreshes the token first.

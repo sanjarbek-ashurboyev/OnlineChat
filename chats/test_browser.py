@@ -9,6 +9,7 @@ import json
 import multiprocessing
 import os
 import re
+import time
 import unittest
 from datetime import timedelta
 
@@ -16,6 +17,7 @@ from channels.testing import ChannelsLiveServerTestCase
 from django.db import connection
 from django.utils import timezone
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.models import LoginSession, User
 from chats.models import Block, Chat, Message
@@ -721,6 +723,12 @@ class RefreshRotationTests(BrowserTestCase):
         expect(tab.locator('#conn-state.is-open')).to_be_attached()
         return tab
 
+    def logout_answers(self, page):
+        answers = []
+        page.on('response', lambda response: answers.append(response.status)
+                if response.url.endswith('/auth/logout/') else None)
+        return answers
+
     def still_renews(self, refresh):
         return APIClient().post('/api/v1/auth/token/refresh/', {'refresh': refresh}).status_code == 200
 
@@ -836,3 +844,122 @@ class RefreshRotationTests(BrowserTestCase):
 
         self.assertEqual(logouts, [])
         self.assertTrue(self.still_renews(answer.json()['refresh']), "the winner's login was ended")
+
+    def test_a_logout_the_server_refused_is_sent_again(self):
+        # Codex review of #40: a 429 on logout was ignored; the tab signed out, the refresh token stayed valid.
+        page = self.open_app(refresh=True)
+        token = page.evaluate('state.refresh')
+        answers = self.logout_answers(page)
+        refused = []
+
+        def refuse_once(route):
+            if refused:
+                route.continue_()
+            else:
+                refused.append(route)
+                route.fulfill(status=429, headers={'Retry-After': '1'}, json={'detail': 'Request was throttled.'})
+
+        page.route('**/api/v1/auth/logout/', refuse_once)
+        page.locator('#logout').click()
+        self.wait_until(page, lambda: 200 in answers, timeout=10)
+        self.assertEqual(answers[0], 429)
+        self.assertFalse(self.still_renews(token))
+
+    def test_a_logout_that_never_reached_the_server_is_sent_on_the_next_visit(self):
+        page = self.open_app(refresh=True)
+        token = page.evaluate('state.refresh')
+        page.route('**/api/v1/auth/logout/', lambda route: route.abort())
+        page.locator('#logout').click()
+        expect(page.locator('#auth')).to_be_visible()
+        self.wait_until(page, lambda: page.evaluate('pendingRevokes().length') == 1)   # the queue write waits for a lock
+        page.unroute('**/api/v1/auth/logout/')
+
+        answers = self.logout_answers(page)
+        page.reload()
+        self.wait_until(page, lambda: 200 in answers, timeout=10)
+        self.assertFalse(self.still_renews(token))
+
+    def fast_forward_after_a_pause(self, page, ms):
+        page.wait_for_timeout(150)   # let the page settle what the last jump fired before the next one
+        page.clock.fast_forward(ms)
+
+    def test_tabs_queueing_logouts_at_the_same_moment_keep_every_token(self):
+        # Codex review of #47: the queue in localStorage was read, changed and written back with nothing between
+        # two tabs, so one tab's write wiped the other's token, and that login was never ended.
+        first = self.open_app(refresh=True)
+        second = self.second_tab(first)
+        tokens = [str(LoginSession.objects.start(self.me)) for _ in range(8)]
+        for tab in (first, second):
+            tab.route('**/api/v1/auth/logout/',
+                      lambda route: route.fulfill(status=429, headers={'Retry-After': '60'}, body='{}'))
+        for trial in range(10):
+            first.evaluate("localStorage.removeItem('pendingRevokes')")
+            when = time.time() * 1000 + 300
+            for tab, share in ((first, tokens[:4]), (second, tokens[4:])):
+                tab.evaluate("""({share, when}) => {
+                    window.queued = false;
+                    setTimeout(() => { for (const token of share) revokeLogin(token); window.queued = true; },
+                               Math.max(0, when - Date.now()));
+                }""", {'share': share, 'when': when})
+            self.wait_until(first, lambda: first.evaluate('window.queued') and second.evaluate('window.queued'))
+            first.wait_for_timeout(200)   # the queue writes are asynchronous
+            self.assertCountEqual(first.evaluate('pendingRevokes()'), tokens, f'trial {trial + 1} lost a token')
+
+    def test_a_logout_that_never_answers_is_ended_and_sent_again(self):
+        # Codex review of #47: a logout held unanswered was the only attempt there ever was, and the login stayed
+        # renewable. Now the request ends after a time limit and counts as a failure to retry.
+        page = self.open_app(refresh=True, setup=lambda page: page.clock.install())
+        token = page.evaluate('state.refresh')
+        attempts = []
+
+        def hold_the_first(route):
+            attempts.append(route)
+            if len(attempts) > 1:
+                route.continue_()
+
+        page.route('**/api/v1/auth/logout/', hold_the_first)
+        page.locator('#logout').click()
+        self.wait_until(page, lambda: attempts)
+        self.fast_forward_after_a_pause(page, 11_000)    # the time limit ends the first request
+        self.fast_forward_after_a_pause(page, 1_100)     # and the retry's turn comes
+        self.wait_until(page, lambda: len(attempts) > 1)
+        self.wait_until(page, lambda: LoginSession.objects.filter(user=self.me, ended_at__isnull=False).exists())
+        self.assertFalse(self.still_renews(token))
+        attempts[0].abort()   # settle the held route, or closing the context logs a CancelledError
+
+    def test_a_queued_logout_whose_token_has_expired_still_ends_the_login(self):
+        # Codex review of #47: the queued token expired, its retry got 401 and was dropped, while the login's newer
+        # token still renewed. The server now ends the login from an expired token too, so the retry works.
+        page = self.open_app(refresh=True)
+        old = page.evaluate('state.refresh')
+        renewed = APIClient().post('/api/v1/auth/token/refresh/', {'refresh': old}).data['refresh']
+        expired = RefreshToken(old)
+        expired.set_exp(lifetime=timedelta(seconds=-10))
+        page.evaluate("token => localStorage.setItem('pendingRevokes', JSON.stringify([token]))", str(expired))
+        answers = self.logout_answers(page)
+        page.reload()
+        self.wait_until(page, lambda: 200 in answers)
+        self.assertEqual(page.evaluate('pendingRevokes().length'), 0)
+        self.assertFalse(self.still_renews(renewed), 'the login lives on through its newer token')
+
+    def test_a_tab_does_not_retry_a_logout_another_tab_already_confirmed(self):
+        # Codex review of #47 (low): tab A's scheduled retry put the token back in the queue and sent it again,
+        # after tab B had got the server's answer and removed it.
+        first = self.open_app(refresh=True, setup=lambda page: page.clock.install())
+        second = self.second_tab(first)
+        token = first.evaluate('state.refresh')
+        sent = []
+
+        def refuse(route):
+            sent.append(route)
+            route.fulfill(status=429, headers={'Retry-After': '1'}, body='{}')
+
+        first.route('**/api/v1/auth/logout/', refuse)
+        first.evaluate('token => revokeLogin(token)', token)
+        self.wait_until(first, lambda: len(sent) == 1)
+        second.evaluate('token => revokeLogin(token)', token)   # the real server answers this one: 200
+        self.wait_until(second, lambda: second.evaluate('pendingRevokes().length === 0'))
+        self.fast_forward_after_a_pause(first, 1_100)
+        first.wait_for_timeout(300)
+        self.assertEqual(len(sent), 1, 'a confirmed logout was sent again')
+        self.assertEqual(first.evaluate('pendingRevokes().length'), 0, 'a confirmed logout is queued again')
