@@ -1,6 +1,6 @@
 # Progress
 
-*Updated: 2026-10-15 (session 039).*
+*Updated: 2026-10-15 (session 040).*
 
 **Status words:** **Done** = code written, tests or checks run and passing, committed.
 **Partial** = some of the acceptance criteria are met. **Blocked** = waiting on something outside
@@ -15,7 +15,7 @@ our control. **Planned** = not started. Code that's written but not verified is 
 were already fixed on `main` before this journal started.
 
 **In parallel from 2026-10-15: the frontend redesign**, from [docs/frontend/plan.md](../frontend/plan.md)
-(Telegram's layout, Apple's feel, plain JS). F-01 done (session 039); next task: F-02.
+(Telegram's layout, Apple's feel, plain JS). F-01 and F-02 done (sessions 039, 040); next task: F-03.
 
 ## Milestones
 
@@ -59,6 +59,7 @@ were already fixed on `main` before this journal started.
 | Codex review of #38–#43, Medium: logout is no longer blocked by the refresh limit (own `logout` scope, 60/min), and the browser keeps retrying a logout the server refused or never got ([decision 017](decisions/017-logout-has-its-own-throttle.md)) | **Done** on `t-07-logout-throttle`, PR #47 (rebased on main after #46 merged). Codex round 1 (3 Medium + 1 Low, all in the retry): queue updates under a Web Lock, a 10 s limit per attempt, the server ends a login from an expired token, no re-sending a confirmed revoke. Round 2 pending | Reproduced: 30 refreshes from one IP → logout 429, token still valid; 4 new tests fail on #46's code and pass now. Round 1: 5 more tests failed first and pass now; `make test` 177 run, OK (skipped=20); real stack with browser tests required 223 OK; Ruff clean | [session 037](sessions/037-logout-throttle.md) |
 | Frontend review and redesign plan: Telegram layout, Apple feel; plain JS, not React ([decision 018](decisions/018-plain-js-not-react.md)) | **Done** (plan only, no code) | [Plan](../frontend/plan.md) with tasks F-01…F-06 and the list of test hooks to keep | [session 038](sessions/038-frontend-review-and-plan.md) |
 | F-01 `app.js` split into 11 ES modules in `assets/js/`, no behaviour change; the tests' six names put on `window` | **Done** on `f-01-es-modules`, PR open | Baseline on `main`: browser tests 46 OK. After: no test changed; real Postgres + Redis with browser tests required 223 OK; `make test` 177 run, OK (skipped=20); Ruff clean; line-count check: every line of `app.js` moved | [session 039](sessions/039-f01-es-modules.md) |
+| F-02 Design system: colour roles (light, dark, high contrast), type scale, SVG icons with `aria-label`, press feedback, reduced motion; Telegram green bubbles | **Done** on `f-02-design-system`, PR open | Every text pair ≥ 4.5:1 (script); Playwright checks of names, pressed scale, reduced-motion and contrast values; no test changed: real Postgres + Redis with browser tests required 223 OK; `make test` 177 run, OK (skipped=20); Ruff clean; before/after screenshots | [session 040](sessions/040-f02-design-system.md) |
 
 Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), and 50/50 tests pass locally.
 
@@ -132,6 +133,7 @@ That's self-reported; nothing has been tested yet, so every concept starts at
 | API contracts, OpenAPI, drf-spectacular | [guide](concepts/api-contracts-and-openapi.md) | Explained | Session 025 | Open `/api/schema/swagger-ui/`, press Authorize, paste an access token, and call `GET /api/v1/chats/`. Then remove `-> bool` from `get_is_online`, predict which test fails, run `make test`, and put it back. |
 | Health checks: liveness vs readiness | [guide](concepts/health-checks.md) | Explained | Session 031 | Start the app (`make up`, then `daphne -p 8002 root.asgi:application`), `curl -i localhost:8002/readyz`. Predict the answer with `REDIS_PORT=6390`, then check. Then explain why a 503 shouldn't restart the process. |
 | UI framework vs plain DOM; effects, StrictMode, stale closures; ES modules | [guide](concepts/frontend-architecture.md) | Explained | Sessions 038, 039 | Open the app with DevTools. Run `state.activeId` in the console, open another chat, run it again. Then explain in your own words why a socket handler that *copied* `activeId` once at start would send read receipts for the wrong chat. |
+| Design tokens, colour roles, contrast ratio, press feedback, reduced motion | [guide](concepts/interface-design.md) | Explained | Session 040 | Turn on "Increase contrast" (macOS: System Settings → Accessibility → Display), open the app, and find which colours changed. Then pick any two token colours from `assets/app.css` and compute their contrast ratio with the formula in the guide (or a checker); say whether they pass 4.5:1. |
 | Connection pools, dead vs hung connections, checkout checks, `drain()` | [guide](concepts/connection-pools.md) | Explained | Sessions 032, 035 (+ follow-up) | With the app running (`daphne -p 8002 root.asgi:application`), `curl` `/readyz` a few times, run `docker compose restart db`, `curl` again. Predict the answers first. Then set `'check': None` in the pool options, repeat, and explain the difference. |
 
 Mark a row *Practiced* yourself after doing its exercise. It becomes *Demonstrated* when you

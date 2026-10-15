@@ -8,6 +8,9 @@ import { start } from './session.js';
 // A module's names are private, so hand them to the page on purpose.
 Object.assign(window, { state, api, loadChats, start, pendingRevokes, revokeLogin });
 
+// iOS Safari only shows :active (our press feedback) on pages that listen for touches.
+document.addEventListener('touchstart', () => {}, { passive: true });
+
 // Messages arrive over the socket; this poll only refreshes other people's
 // online dots, which nothing pushes to us.
 setInterval(() => { if (state.me) loadChats().catch(() => {}); }, 45000);
