@@ -628,6 +628,20 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   its tokens it gets.
 - **Lesson:** revoke the thing the user means ("this login"), not the piece of it the client happens to hold.
 
+## P-41 · Logout was blocked by the refresh limit, and the browser didn't notice
+
+- **Session:** [037](sessions/037-logout-throttle.md) · found by Codex's review of PR #40
+- **Observed:** after 30 refresh requests from one IP within a minute, `POST /auth/logout/` from that IP answered
+  **429**. The browser never looked at the answer: it signed out locally, and the refresh token kept working. Two
+  browser tests: a logout answered 429 and a logout the network dropped were never sent again.
+- **Root cause (Confirmed, from the settings and the tests):** `LogoutView` shared the `refresh` throttle scope
+  (30/min per IP), so other people's refreshes behind one NAT used up everyone's logouts; and `logout()` fired the
+  request and forgot it.
+- **Fix:** `logout` is its own scope (60/min); `revokeLogin()` in `assets/app.js` retries until the server answers,
+  honours `Retry-After`, and keeps the token in `localStorage` so the next visit finishes the job.
+- **Lesson:** a limit on a safety action needs its own counter, and the client must not treat "I asked" as "it
+  happened".
+
 ## P-42 · After the blacklist app was removed, deleting a user failed
 
 - **Session:** [036](sessions/036-login-sessions.md) (follow-up) · found by Codex's review of PR #46
