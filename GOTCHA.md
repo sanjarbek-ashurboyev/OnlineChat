@@ -72,12 +72,14 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
   (a type hint, `@extend_schema`), don't silence it.
 - **macOS spawns processes, Linux forks them.** Code that starts a process can pass on the Mac and fail in CI.
   Reproduce with `multiprocessing.set_start_method('fork', force=True)`. → [P-22](docs/learning-journal/problems-and-solutions.md#p-22--browser-tests-passed-on-the-mac-but-never-connected-in-ci)
-- **After an `await` in `app.js`, the user may even have signed out.** `api()` drops answers from an earlier
+- **After an `await` in the frontend (`assets/js/`), the user may even have signed out.** `api()` drops answers from an earlier
   session (`state.session`); new async code must go through it or check the session itself. → [P-29](docs/learning-journal/problems-and-solutions.md#p-29--logout-didnt-stop-the-previous-sessions-work)
   Check it **before** acting on an answer (a refresh, a retry), not only before using it. → [P-34](docs/learning-journal/problems-and-solutions.md#p-34--a-late-answer-acted-for-the-wrong-account-sent-twice-or-left-a-gap)
 - **A load-test verdict ignores `server_errors`.** 169 error frames still gave "OK" (session 027). Read that column.
-- **After an `await` in `app.js`, the user may have moved on.** Check the answer still belongs to what's on screen
+- **After an `await` in the frontend (`assets/js/`), the user may have moved on.** Check the answer still belongs to what's on screen
   before drawing it. → [P-21](docs/learning-journal/problems-and-solutions.md#p-21--four-frontend-bugs-with-no-tests-to-catch-them)
+- **The frontend is ES modules: their names are private.** Browser tests (and DevTools) reach `state`, `api` & co.
+  only through the list `assets/js/main.js` puts on `window`. A test calling a new name needs it added there (session 039).
 - **In a `subTest` loop, keep every assertion of a case inside its `with self.subTest(...)`.** One outside it ends
   the test at the first failure, and the later cases never run.
 - **`page.evaluate` waits for a promise you return.** If the test holds that promise's request (`page.route`),

@@ -46,9 +46,33 @@ useEffect(() => {
   always sees the current value.
 
 ## Our project
-`assets/app.js` is plain DOM code (934 lines). We chose to keep it that way for the redesign
-([decision 018](../decisions/018-plain-js-not-react.md)), and to split it into modules first (F-01 in the
-[frontend plan](../../frontend/plan.md)).
+The frontend is plain DOM code, 934 lines that were one file (`assets/app.js`). We chose to keep it that way for
+the redesign ([decision 018](../decisions/018-plain-js-not-react.md)), and split it into ES modules in `assets/js/`
+first (F-01 in the [frontend plan](../../frontend/plan.md), session 039).
+
+## ES modules (how our code is split)
+- **Definition:** an ES module is a JavaScript file loaded with `<script type="module">` (or `import`). It says
+  what it shares with `export` and what it needs with `import`. Everything else stays private to the file.
+- **Why:** one 934-line file mixed tokens, the socket and drawing code. Modules keep each topic in its own file, and
+  the `import` lines show who depends on whom. No build step is needed: browsers load them directly.
+
+```js
+// format.js
+export function timeOf(iso) { /* … */ }
+
+// messages.js
+import { timeOf } from './format.js';   // the path is relative to this file
+```
+
+- **Classic script vs module:** a classic script's top-level `const` and `function` names are shared with every
+  script on the page (and with DevTools). A module's are not. That is why `assets/js/main.js` puts the few names
+  the browser tests call (`state`, `api`, `loadChats`, `start`, `pendingRevokes`, `revokeLogin`) on `window`.
+- **Modules wait for the page:** a module script runs after the HTML is parsed (like `defer`), so `$('chat-list')`
+  finds its element.
+- **Circular imports are allowed** (`socket.js` imports `composer.js` and the other way round), as long as no
+  module *calls* the other's functions while it is still loading. Ours only call them later, from event handlers.
+- **Common mistake:** forgetting `type="module"` (the browser then refuses `import`), or a missing `export` (the
+  page stops with "does not provide an export named …").
 
 ## Alternatives
 - **React / Preact:** components and state; Preact is a 4 KB React-like library.
