@@ -1,6 +1,6 @@
 # Progress
 
-*Updated: 2026-10-15 (session 040).*
+*Updated: 2026-10-15 (session 041).*
 
 **Status words:** **Done** = code written, tests or checks run and passing, committed.
 **Partial** = some of the acceptance criteria are met. **Blocked** = waiting on something outside
@@ -15,7 +15,7 @@ our control. **Planned** = not started. Code that's written but not verified is 
 were already fixed on `main` before this journal started.
 
 **In parallel from 2026-10-15: the frontend redesign**, from [docs/frontend/plan.md](../frontend/plan.md)
-(Telegram's layout, Apple's feel, plain JS). F-01 and F-02 done (sessions 039, 040); next task: F-03.
+(Telegram's layout, Apple's feel, plain JS). F-01 to F-03 done (sessions 039–041); next: you try F-03 on a phone, then F-04.
 
 ## Milestones
 
@@ -60,6 +60,7 @@ were already fixed on `main` before this journal started.
 | Frontend review and redesign plan: Telegram layout, Apple feel; plain JS, not React ([decision 018](decisions/018-plain-js-not-react.md)) | **Done** (plan only, no code) | [Plan](../frontend/plan.md) with tasks F-01…F-06 and the list of test hooks to keep | [session 038](sessions/038-frontend-review-and-plan.md) |
 | F-01 `app.js` split into 11 ES modules in `assets/js/`, no behaviour change; the tests' six names put on `window` | **Done** on `f-01-es-modules`, PR open | Baseline on `main`: browser tests 46 OK. After: no test changed; real Postgres + Redis with browser tests required 223 OK; `make test` 177 run, OK (skipped=20); Ruff clean; line-count check: every line of `app.js` moved | [session 039](sessions/039-f01-es-modules.md) |
 | F-02 Design system: colour roles (light, dark, high contrast), type scale, SVG icons with `aria-label`, press feedback, reduced motion; Telegram green bubbles | **Done** on `f-02-design-system`, PR open | Every text pair ≥ 4.5:1 (script); Playwright checks of names, pressed scale, reduced-motion and contrast values; no test changed: real Postgres + Redis with browser tests required 223 OK; `make test` 177 run, OK (skipped=20); Ruff clean; before/after screenshots | [session 040](sessions/040-f02-design-system.md) |
+| F-03 Layout and navigation: glass header and composer, ☰ menu (`<dialog>`), connection in words, phone slide-over with swipe-back; springs and gestures in `motion.js` | **Done** on `f-03-layout-navigation`, PR open; **phone check by you pending** | 5 new browser tests failed first, then pass; 10 logout clicks now go through the menu; `make test` 177 run, OK (skipped=21); real Postgres + Redis with browser tests required: 228 OK (one earlier run had 2 errors after back-to-back runs, see session); Ruff and ESLint clean; screenshots | [session 041](sessions/041-f03-layout-and-navigation.md) |
 
 Both PRs merged on 2026-10-10. The combined `main` passed CI (lint and tests), and 50/50 tests pass locally.
 
@@ -134,6 +135,7 @@ That's self-reported; nothing has been tested yet, so every concept starts at
 | Health checks: liveness vs readiness | [guide](concepts/health-checks.md) | Explained | Session 031 | Start the app (`make up`, then `daphne -p 8002 root.asgi:application`), `curl -i localhost:8002/readyz`. Predict the answer with `REDIS_PORT=6390`, then check. Then explain why a 503 shouldn't restart the process. |
 | UI framework vs plain DOM; effects, StrictMode, stale closures; ES modules | [guide](concepts/frontend-architecture.md) | Explained | Sessions 038, 039 | Open the app with DevTools. Run `state.activeId` in the console, open another chat, run it again. Then explain in your own words why a socket handler that *copied* `activeId` once at start would send read receipts for the wrong chat. |
 | Design tokens, colour roles, contrast ratio, press feedback, reduced motion | [guide](concepts/interface-design.md) | Explained | Session 040 | Turn on "Increase contrast" (macOS: System Settings → Accessibility → Display), open the app, and find which colours changed. Then pick any two token colours from `assets/app.css` and compute their contrast ratio with the formula in the guide (or a checker); say whether they pass 4.5:1. |
+| Springs, gesture projection, `inert`, `touch-action` | [guide](concepts/interface-design.md#springs-motion-you-can-interrupt-f-03) | Explained | Session 041 | On your phone, open a chat and tap Back while it is still sliding in; then swipe right slowly and let go half-way, and once fast from near the left. Predict each outcome first. Then in `motion.js` set `dampingRatio` to 0.5 in `createSpring`'s default, reload, and describe what changed. Put it back. |
 | Connection pools, dead vs hung connections, checkout checks, `drain()` | [guide](concepts/connection-pools.md) | Explained | Sessions 032, 035 (+ follow-up) | With the app running (`daphne -p 8002 root.asgi:application`), `curl` `/readyz` a few times, run `docker compose restart db`, `curl` again. Predict the answers first. Then set `'check': None` in the pool options, repeat, and explain the difference. |
 
 Mark a row *Practiced* yourself after doing its exercise. It becomes *Demonstrated* when you

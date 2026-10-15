@@ -748,3 +748,15 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   connection on both systems.
 - **Lesson:** to stop a thread blocked on a socket, `shutdown()` it; `close()` alone is not portable. And read the exit
   code of a test run: this error comes after the `OK` line.
+
+## P-47 · The swipe-back gesture never arrived: the wrong element had `touch-action`
+
+- **Session:** [041](sessions/041-f03-layout-and-navigation.md)
+- **Observed:** the browser test that swipes right on a phone (`test_on_a_phone_a_swipe_right_goes_back`, real touch
+  input through Chromium's DevTools protocol) stayed in the chat. `.pane` had `touch-action: pan-y pinch-zoom`.
+- **Root cause (Confirmed: the same test fails without the fix and passes with it):** the browser decides what a touch
+  may do from the element where it starts *up to the nearest scrolling element*, here `.messages`. `.pane` is outside
+  that, so its `touch-action` was never consulted; `.messages` still allowed every gesture, and the browser kept the
+  sideways drag for itself (`pointercancel`) instead of sending us `pointermove`s.
+- **Fix:** `touch-action: pan-y pinch-zoom` on `.messages` too.
+- **Lesson:** put `touch-action` on the scrolling element the finger is in, not only on an outer box.

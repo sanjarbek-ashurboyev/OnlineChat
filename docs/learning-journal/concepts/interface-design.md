@@ -54,6 +54,44 @@ Our icons are an inline SVG **sprite**: `<symbol>`s drawn once at the top of `in
 An icon-only button must have a name for screen readers: `aria-label="Send"`; the SVG itself gets
 `aria-hidden="true"`.
 
+## Springs: motion you can interrupt (F-03)
+- **Definition:** a spring pulls a value toward a target, like a weight on a spring. It has no fixed duration: it
+  arrives when it arrives. Apple describes one with two numbers: **response** (seconds; lower is snappier) and
+  **damping ratio** (1 = settles without overshoot; below 1 bounces).
+- **Why:** a fixed-length animation (CSS `transition`) restarts when interrupted and jumps. A spring keeps its current
+  position *and speed*, so a new target bends the motion smoothly. Tap "back" while a chat is still sliding in, and it
+  turns around mid-way.
+- **How (ours, `assets/js/motion.js`):** every frame, `velocity += (−stiffness·(value − target) − damping·velocity)·dt`,
+  then `value += velocity·dt`, with `stiffness = (2π/response)²` and `damping = 4π·ratio/response`.
+
+```js
+const spring = createSpring((x) => el.style.transform = `translateX(${x}px)`, { response: 0.35 });
+spring.to(300);                    // slides; call spring.to(0) half-way and it turns around smoothly
+spring.jump(120);                  // a finger holds it: move at once, no animation
+spring.to(0, { velocity: 800 });   // the finger let go at 800 px/s: carry on at that speed
+```
+
+## Gestures: follow the finger, then decide
+1. **Wait for intent (hysteresis):** nothing happens for the first 10 px. Mostly vertical is a scroll: leave it alone.
+2. **Track 1:1:** the panel moves exactly as far as the finger, from where it was grabbed (it may still have been moving).
+3. **Measure the speed** over the last 100 ms of movement.
+4. **Project where a flick would end:** `position + (v / 1000) · 0.998 / (1 − 0.998)`, the same deceleration as
+   scrolling. Decide with that point, not the release point: a short fast flick counts as a long swipe.
+5. **Hand the speed to the spring**, so there is no seam between dragging and animating.
+6. **Past an edge, resist** (rubber-banding) instead of stopping dead.
+
+On the web these need Pointer Events, `setPointerCapture`, and `touch-action` on the **scrolling** element (P-47).
+
+## Materials: frosted glass
+`backdrop-filter: blur(20px) saturate(180%)` on a see-through background blurs what passes underneath. The header and
+composer of a chat are glass and the messages scroll under them, so you can see that there is more. With
+`prefers-reduced-transparency` the glass turns solid.
+
+## Off-screen means unreachable: `inert`
+On a phone the list and the chat lie on top of each other. The one off screen gets `inert`: it can't be focused,
+clicked, or read by a screen reader. The incoming panel loses `inert` at once; the outgoing one gets it when it has
+finished leaving, so a finger can still catch it on the way out.
+
 ## Alternatives
 - **Icon fonts:** easy, but screen readers may read the glyphs and a failed font load shows boxes.
 - **Emoji as icons** (what we had): look different on every system and can't take our colours.

@@ -7,9 +7,30 @@ import { signOut } from './session.js';
 
 /* ── websocket ──────────────────────────── */
 
+let connClass = '';
+
+/** The connection in words, where Telegram puts it: the list's title, and the open chat's status line.
+ *  Not by colour alone: a red or green dot says nothing to someone who can't tell them apart. */
 function setConn(cls) {
+  connClass = cls;
+  const open = cls === 'is-open';
+  const words = open ? 'Chats' : navigator.onLine ? 'Connecting…' : 'Waiting for network…';
   $('conn-state').className = 'conn' + (cls ? ' ' + cls : '');
+  $('conn-state').textContent = words;
+  $('peer-conn').textContent = open ? '' : words;
+  $('peer-conn').hidden = open;
+  $('peer-status').hidden = !open;
 }
+
+window.addEventListener('offline', () => setConn(connClass));
+// Back online: try now, instead of waiting out a backoff that grew while the network was gone.
+window.addEventListener('online', () => {
+  setConn(connClass);
+  if (state.me && connClass !== 'is-open') {
+    state.retry = 0;
+    connectInbox();
+  }
+});
 
 export function closeSocket() {
   clearInterval(state.pingTimer);
