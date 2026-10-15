@@ -4,6 +4,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from root.db import check_pooled_connection
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(BASE_DIR / '.env')
@@ -126,7 +128,9 @@ DATABASES = {
           # closes the connection after every socket call. With the pool, "close" hands it back instead.
           # CONN_MAX_AGE must stay 0. max_size per process; keep the sum over processes well under
           # Postgres's max_connections (100). timeout: wait at most 5 s for a free connection, then fail.
-          'OPTIONS': {'pool': {'min_size': 2, 'max_size': 10, 'timeout': 5}},
+          # check: the pool can't tell that Postgres restarted until it uses a connection, so test each one on
+          # checkout (one round trip). CONN_HEALTH_CHECKS alone gives the pool a check that recovers too slowly.
+          'OPTIONS': {'pool': {'min_size': 2, 'max_size': 10, 'timeout': 5, 'check': check_pooled_connection}},
       }
 }
 
