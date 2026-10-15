@@ -47,7 +47,7 @@ jwt.decode(token, 'wrong-secret', algorithms=['HS256'])    # raises InvalidSigna
     database lets one win; the other changes 0 rows and gets 401 (P-39). A stolen refresh token stops working as
     soon as the real user refreshes.
   - *Logout:* `POST /auth/logout/ {"refresh": ...}` marks the row ended. Any of the login's tokens will do, even an
-    older one a stale tab still holds (P-40).
+    older one a stale tab still holds (P-40), even an expired one (P-41). Refresh still refuses expired tokens.
   - *Only refreshes and logouts read the row.* An access token stays valid until it expires (≤ 5 min), and so does
     a socket opened with it. That's the price of not querying the database per request.
   - Until session 036 this was SimpleJWT's **blacklist** (a table of spent tokens). It let one token be spent twice
@@ -58,6 +58,10 @@ jwt.decode(token, 'wrong-secret', algorithms=['HS256'])    # raises InvalidSigna
     the browser shares between all tabs of one site. A tab that waited first takes the token the tab before it saved
     (`adoptStoredToken()`), so it never spends one that's already spent (P-43, session 036). The request under the
     lock ends after 10 s (`AbortController`, `postRefresh()`), so a hung request can't hold every tab back (P-46).
+  - *Logouts the server hasn't confirmed* wait in a queue in `localStorage` (`pendingRevokes`). Updating it is a
+    read, change and write, so it runs under its own Web Lock (`'pending-revokes'`), or two tabs lose each other's
+    entries (P-41). The server ends a login from an *expired* token too: the signature proves which login it
+    names, and an expired token must not leave the login's newer token alive (decision 017).
   - *Only the "Log out" button ends the login* (`logout()`). When the server refuses a tab's refresh token, the tab
     just forgets its tokens (`signOut()`): another tab may have spent that token a moment ago, and its login must
     live on.
