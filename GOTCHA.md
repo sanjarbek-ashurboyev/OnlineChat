@@ -89,6 +89,8 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
 - **Playwright's `has_text='User 2'` is a substring match:** it also finds "User 20". Use `re.compile('^User 2$')`
   when names share a prefix; a "strict mode violation" is the sign (session 024).
 - **A Playwright route handler must be a Python function**, not a built-in like `held.append`: wrap it in a lambda.
+- **End a held route** (`continue_()`, `fulfill()` or `abort()`) before the test ends, or closing the context prints a
+  `CancelledError` traceback. `page.clock` belongs to the whole context, so it moves every tab of it.
 - **Write the failing test first, and watch it fail.** When mocking, also assert the mock was called
   (`assert_awaited_once()`); otherwise the test can pass without testing anything.
 
@@ -143,6 +145,8 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
   test upgrades on a database the previous release migrated: fresh test databases never have them. → [P-42](docs/learning-journal/problems-and-solutions.md#p-42--after-the-blacklist-app-was-removed-deleting-a-user-failed)
 - **"Check, then act" in two Redis calls is a race** (8 of 8 sockets got past a limit of 5). Do it in one step:
   a Lua script. → [P-27](docs/learning-journal/problems-and-solutions.md#p-27--five-sockets-opened-at-once-let-eight-in)
+- **A lock held across a network call needs a timeout on the call** (`AbortController`). One stuck request kept every
+  tab from renewing its token. → [P-46](docs/learning-journal/problems-and-solutions.md#p-46--one-hung-refresh-request-stopped-every-tab-from-renewing)
 - **A long-lived connection must re-check its rights.** Sockets close at token expiry (4401) and within 60 s of an
   account being disabled ([decision 006](docs/learning-journal/decisions/006-socket-rights-end-with-the-token.md)).
 - **Cleanup code must not depend on every step succeeding.** A failing `group_discard` used to skip "mark

@@ -342,3 +342,124 @@ def drop_blacklist_tables(apps, schema_editor):
 - Codex review round 2 of PR #46; the assistant merges after it.
 - Rebase `t-07-logout-throttle` onto this once merged (both change `logout()` in `app.js`).
 - With T-10: the daily delete of ended and expired `LoginSession` rows.
+
+---
+
+# Follow-up · Codex review of PR #46, round 2 (the last round)
+
+- **Date:** 2026-10-15 · **Branch:** `t-07-refresh-single-use` (same PR, #46)
+- **Files:** `assets/app.js`, `chats/test_browser.py`, docs
+- **Objective:** Codex confirmed both round-1 bugs fixed and reproduced one new Medium bug, caused by the lock added
+  in round 1: a refresh request that never answers keeps the lock, so no tab can renew.
+
+## What was done
+1. **Brought `main` into the branch** (`git merge origin/main`, no force push): PR #45 had merged, and the branch
+   protection needs an up-to-date branch. Only the docs conflicted (GOTCHA, decisions index, `progress.md`,
+   `problems-and-solutions.md`: both sides added lines); both sides kept.
+2. **Reproduced it first** with `test_a_refresh_that_never_answers_does_not_stop_another_tab_from_renewing`: two tabs
+   of one browser; tab A's refresh request is held and never answered; tab B needs a new token; then the shared test
+   clock moves 11 s. On the old code: `AssertionError: condition never became true`: B never renewed (its refresh
+   wasn't even sent; it was waiting for the lock).
+   - My first version of the test hung instead of failing: `evaluate` returned the promise that was waiting for the lock
+     (the `page.evaluate` rule in GOTCHA). The fix was `void`, and a `window.outcome` that the test polls.
+3. **Fixed it in `assets/app.js`:** `postRefresh()` sends the request with an `AbortController` and aborts it after
+   `REFRESH_TIMEOUT_MS` = 10 s. The signal also covers `res.json()`, so a stalled body can't hold the lock either.
+   An abort becomes `Error('refresh timed out')`, handled like any network error: the tab keeps its tokens and
+   retries later (`start()` retries after 5 s; the socket path reconnects). `clearTimeout` runs in `finally`.
+4. **The test also checks the tab that gave up:** it isn't signed out, sent no `/auth/logout/`, still has its app
+   screen, takes the token B saved (`adoptStoredToken()`) and renews, and no login was ended.
+5. **Results:** the new test fails on the old code and passes now; the 21 `RefreshRotationTests` and
+   `SessionLifecycleTests` pass; `make test` **173 run, OK (skipped=20)** (213 found); real Postgres + Redis with
+   `REQUIRE_BROWSER_TESTS=True`, `manage.py test`: **213 OK**, exit 0, no skips; `makemigrations --check` no changes;
+   Ruff 0.16.10 clean.
+
+**Not done:**
+- No test where the *body* stalls after the headers arrive. The same abort covers it, but Playwright can't hold a
+  body; only the held request is tested.
+- If the request reached the server and only the answer was lost, the old token is already spent; that tab signs
+  itself out (see the limit in [decision 016](../decisions/016-login-sessions.md#update-codex-review-of-46-round-2-a-refresh-that-never-answers)).
+  The login on the server stays valid until it expires.
+- The 10 s limit is a constant, not measured against real slow servers.
+
+## Concepts
+
+### A lock needs a way out
+- **Simple definition:** while code holds a lock, everyone else who needs it waits. How long they wait is decided by
+  the slowest thing the holder does.
+- **Why here:** the holder's slowest step is a network request, and the network can hang for minutes.
+- **How:** give the request a deadline. `AbortController` makes a `signal`; `fetch(url, { signal })` rejects when
+  `controller.abort()` is called, and so does reading the body (`res.json()`). `setTimeout(() => controller.abort(), ms)`
+  starts the countdown; `clearTimeout` in `finally` stops it when the request ends in time.
+- **Common mistake:** timing out the `fetch` only. The headers can arrive and the body stall.
+- Extended in [the JWT guide](../concepts/authentication-and-jwt.md).
+
+## Walkthrough
+
+`assets/app.js`:
+```js
+async function postRefresh(refresh) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${API}/auth/token/refresh/`, { ..., signal: controller.signal });
+    return { res, data: res.ok ? await res.json() : null };
+  } catch (err) {
+    if (controller.signal.aborted) throw new Error('refresh timed out');
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+```
+- Parsing the body is inside the `try`, so the timer covers it.
+- A timeout throws a plain `Error` with no `status`. `start()` only signs out on `err.status === 401`, so a timeout
+  takes the "can't reach the server, trying again" path; the 4401 handler for the socket already retries when
+  `refreshAccess()` throws. A refresh answered with 400/401 still means "refused".
+- `spendRefreshToken()` no longer calls `fetch` itself; it asks `postRefresh()` and keeps the rest (the retry with a
+  newer stored token, the session check before saving).
+
+`chats/test_browser.py`: A's route handler keeps the first refresh request and lets later ones through
+(`route.continue_() if hung else hung.append(route)`), so that after the timeout A can renew with B's token. At the
+end `hung[0].abort()` settles the held route: otherwise closing the browser context prints a `CancelledError` trace.
+
+## Problems
+- **One hung refresh request stopped every tab from renewing** → [P-46](../problems-and-solutions.md#p-46--one-hung-refresh-request-stopped-every-tab-from-renewing).
+- **The first draft of the test hung instead of failing** (`evaluate` waiting on the promise that waits for the
+  lock), and killing the run left the spawned server process and its test-database sessions behind: the next run
+  said "database is being accessed by other users". Found the two orphaned Python processes (parent 1, started with
+  the run) and stopped them.
+- `make test` printed `python: No such file or directory`: the venv wasn't on `PATH`. Ran it with `.venv/bin` first.
+
+## Decisions
+- Time limit on the renewal, 10 s, an abort treated as a network error (not a refusal). Added to
+  [decision 016](../decisions/016-login-sessions.md#update-codex-review-of-46-round-2-a-refresh-that-never-answers).
+
+## What I should remember
+- A lock held across I/O needs a deadline on the I/O, or its holder decides everyone's wait.
+- `AbortController` ends a `fetch` *and* the body read; a timer you start must be cleared in `finally`.
+- A timeout is not a refusal: don't sign anyone out because a server was slow.
+- In a Playwright test, never `evaluate` a promise that depends on something the test hasn't released yet.
+
+## Review questions
+1. Why did one hung request in tab A stop tab B, which never sent anything?
+2. Why must the timer cover `res.json()` and not only `fetch`?
+3. Why is a timeout thrown as an error instead of returned as `false` ("refused")?
+4. What can still go wrong if the request reached the server but the answer was lost?
+5. Why does the test end with `hung[0].abort()`?
+
+<details><summary>Answer key</summary>
+
+1. A holds the Web Lock until its function ends, and its function was waiting for the request. B asks for the same
+   lock, so it waits for A, and A waits for the server.
+2. After the headers arrive, the body can stall. The lock would stay held until it ends.
+3. `false` means "the server refused the token, sign in again", and the tab would sign out. A slow server isn't a
+   refusal; throwing makes the caller keep the tokens and retry.
+4. The server has already replaced the token with a new one that the tab never saw. The tab retries with the old
+   one, which is refused, and signs itself out. The login on the server isn't ended.
+5. The route was never answered; at the end of the test, closing the context cancels it and Playwright prints a
+   traceback. `abort()` settles it first.
+</details>
+
+## Next steps
+- CI green on `t-07-refresh-single-use`, then the assistant merges (no round 3: leftovers become new to-dos).
+- Rebase `t-07-logout-throttle` onto this (both change `logout()` in `app.js`).

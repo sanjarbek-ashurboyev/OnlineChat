@@ -659,6 +659,22 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
 - **Lesson:** a fix that makes an action stronger (logout now ends *every* tab) changes every caller of it. Check who
   else calls it, and for what reason.
 
+## P-46 · One hung refresh request stopped every tab from renewing
+
+- **Session:** [036](sessions/036-login-sessions.md) (follow-up, round 2) · found by Codex's review of PR #46
+- **Observed:** tab A sends a refresh and the answer never comes; tab B needs a new token too. B waited for the Web
+  Lock for ever: its refresh was never even sent. Browser test (A's refresh route held, then the clock moved 11 s):
+  `condition never became true` — B had not renewed.
+- **Root cause (Confirmed, from the code and the test):** the fix for P-43 holds the `refresh-token` lock for as long
+  as `spendRefreshToken()` runs, and that was `fetch(...)` followed by `res.json()` with no time limit. A browser
+  waits a long time for a silent server, so one stuck request holds the lock, and with it every tab's renewal.
+- **Fix:** `assets/app.js`. `postRefresh()` makes the request with an `AbortController` and aborts it after
+  `REFRESH_TIMEOUT_MS` (10 s); the signal covers the body too. An abort throws `Error('refresh timed out')`, which
+  callers already treat like a network error: keep the tokens, retry later, don't sign out. The lock is released when
+  the function ends, in every case. One browser test, failing on the old code.
+- **Lesson:** a lock held across a network call needs a time limit on the call. The lock's holder decides how long
+  everyone else waits.
+
 ## P-38 · `CONN_HEALTH_CHECKS` still failed with a pool full of dead connections
 
 - **Session:** [035](sessions/035-dead-pooled-connections.md)

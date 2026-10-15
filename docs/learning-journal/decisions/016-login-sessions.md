@@ -50,6 +50,22 @@ PR a refused token's automatic logout blacklisted a token that was already spent
 nothing we had. Theft detection ("a spent token came back: end the login") would need the server to tell *which*
 token came back, and is not planned.
 
+## Update (Codex review of #46, round 2): a refresh that never answers
+The cross-tab lock is held while a tab's refresh request runs, so a request that hangs blocks every tab's renewal
+(P-46). Options:
+1. **No limit** (before). One stuck request stops all renewals until the browser gives up on it.
+2. **Time out only the `fetch`.** The body can stall after the headers arrive, and that would still hold the lock.
+3. **One `AbortController` for the request and its body, 10 s, treated as a network error.**
+
+**Chosen: 3.** The server's refresh is a few database statements, normally milliseconds; 10 s is the same patience as
+`ACK_TIMEOUT_MS`. An abort is *not* a refusal: signing the tab out would end a session over a slow
+server, so the tab keeps its tokens and retries, like after a dropped connection.
+
+**Limit:** if the request reached the server and the answer was lost, the server has already swapped the token and the
+tab only has the old one, which is now refused. It then signs that tab out (the login on the server stays valid until
+it expires; signing in again makes a new one). Dropped connections already did this, and rotation can't avoid it
+without a short grace period for a just-spent token, which we don't have.
+
 ## When another option is better
 - **4** if we need "sign out everywhere *now*", access tokens included (a compromised account).
 - **A per-request `sid` check** (still option 3) if 5 minutes after logout becomes too long.

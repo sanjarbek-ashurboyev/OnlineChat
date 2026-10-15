@@ -56,7 +56,8 @@ jwt.decode(token, 'wrong-secret', algorithms=['HS256'])    # raises InvalidSigna
     a token another tab of the same account just saved (`renewTokens()` in `assets/app.js`).
   - *Across tabs,* renewals take turns under a **Web Lock** (`navigator.locks.request('refresh-token', fn)`): a lock
     the browser shares between all tabs of one site. A tab that waited first takes the token the tab before it saved
-    (`adoptStoredToken()`), so it never spends one that's already spent (P-43, session 036).
+    (`adoptStoredToken()`), so it never spends one that's already spent (P-43, session 036). The request under the
+    lock ends after 10 s (`AbortController`, `postRefresh()`), so a hung request can't hold every tab back (P-46).
   - *Only the "Log out" button ends the login* (`logout()`). When the server refuses a tab's refresh token, the tab
     just forgets its tokens (`signOut()`): another tab may have spent that token a moment ago, and its login must
     live on.
@@ -96,7 +97,7 @@ jwt.decode(token, 'wrong-secret', algorithms=['HS256'])    # raises InvalidSigna
   refresh race to its neighbour would sign both out (P-43). Only the user's own "Log out" should end it.
 - **A lock callback that never finishes.** A Web Lock is held until the callback's promise settles. Our `dropped()`
   promise never settles, so it must stay *outside* the lock, or one signed-out tab would block every other tab's
-  renewals forever.
+  renewals forever. The same goes for a request that never ends: give it a time limit (`AbortController`, P-46).
 - **Checking a token only when a long-lived connection opens.** A WebSocket can stay open for hours, so its
   token expires *during* the connection. Until session 020, ours stayed authorized forever.
 - **Confusing authentication with authorization.** A valid token proves who you are. You still have to
