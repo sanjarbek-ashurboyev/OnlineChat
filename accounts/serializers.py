@@ -1,3 +1,4 @@
+import jwt
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
@@ -5,11 +6,13 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 from rest_framework.fields import CharField, SerializerMethodField
 from rest_framework.serializers import ModelSerializer, Serializer
-from rest_framework_simplejwt.exceptions import InvalidToken
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.serializers import (
     TokenObtainPairSerializer,
     TokenRefreshSerializer,
 )
+from rest_framework_simplejwt.settings import api_settings
+from rest_framework_simplejwt.state import token_backend
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.utils import datetime_from_epoch
 
@@ -127,6 +130,21 @@ class LogoutSerializer(Serializer):
 
     def validate(self, attrs):
         # Any refresh token of the login will do, even one already renewed: another tab may have renewed it.
-        token = RefreshToken(attrs['refresh'])
-        LoginSession.objects.filter(pk=token.get('sid'), ended_at=None).update(ended_at=timezone.now())
+        # Even an expired one: its signature still proves we issued it and which login it belongs to, and a logout
+        # that waited for a retry can outlive its token while a newer token of the login still renews.
+        raw = attrs['refresh']
+        try:
+            payload = jwt.decode(
+                raw,
+                token_backend.get_verifying_key(raw),
+                algorithms=[token_backend.algorithm],
+                audience=token_backend.audience,
+                issuer=token_backend.issuer,
+                options={'verify_exp': False, 'verify_aud': token_backend.audience is not None},
+            )
+        except jwt.InvalidTokenError as exc:
+            raise TokenError('Token is invalid') from exc
+        if payload.get(api_settings.TOKEN_TYPE_CLAIM) != RefreshToken.token_type:
+            raise TokenError('Token has wrong type')
+        LoginSession.objects.filter(pk=payload.get('sid'), ended_at=None).update(ended_at=timezone.now())
         return {}

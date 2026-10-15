@@ -7,6 +7,7 @@ const ACK_TIMEOUT_MS = 10000;   // no echo by then: look in the history (Codex a
 const START_RETRY_MS = 5000;    // the server couldn't be reached at startup (Codex audit M-12)
 const REFRESH_TIMEOUT_MS = 10000;   // a renewal holds the lock all tabs share, so it must end (Codex review of #46)
 const REVOKE_RETRY_MAX_MS = 60000;  // a logout the server didn't take is retried, waiting at most this long
+const REVOKE_TIMEOUT_MS = 10000;    // a logout the server never answers counts as failed, and is retried
 const AVATAR_FALLBACK =
   'data:image/svg+xml;utf8,' + encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">' +
@@ -818,30 +819,43 @@ function pendingRevokes() {
   }
 }
 
-function setPendingRevoke(refresh, pending) {
-  const others = pendingRevokes().filter((token) => token !== refresh);
-  localStorage.setItem('pendingRevokes', JSON.stringify(pending ? [...others, refresh] : others));
+/** Change the queue under a lock all tabs share. Read, change, write is three steps, and two tabs doing it at
+ *  once lose one of the changes: that token's login is then never ended (Codex review of #47). */
+function updatePendingRevokes(change) {
+  const run = () => localStorage.setItem('pendingRevokes', JSON.stringify(change(pendingRevokes())));
+  return navigator.locks ? navigator.locks.request('pending-revokes', run) : Promise.resolve(run());
 }
 
 /** End a login on the server (T-07), retrying until the server answers. A 429 or a network error must not
  *  leave the token working (Codex review of #40). Not tied to `state.session`: whoever signs in next, the
  *  old login still has to end. */
-function revokeLogin(refresh, delay = 1000) {
-  setPendingRevoke(refresh, true);
-  const retry = (wait) => setTimeout(() => revokeLogin(refresh, Math.min(delay * 2, REVOKE_RETRY_MAX_MS)), wait);
+function revokeLogin(refresh) {
+  void updatePendingRevokes((pending) => (pending.includes(refresh) ? pending : [...pending, refresh]));
+  attemptRevoke(refresh);
+}
+
+function attemptRevoke(refresh, delay = 1000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REVOKE_TIMEOUT_MS);
+  // The queue is the truth: another tab may have got the server's answer while this one waited.
+  const retry = (wait) => setTimeout(() => {
+    if (pendingRevokes().includes(refresh)) attemptRevoke(refresh, Math.min(delay * 2, REVOKE_RETRY_MAX_MS));
+  }, wait);
   fetch(`${API}/auth/logout/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ refresh }),
     keepalive: true,
+    signal: controller.signal,
   }).then((res) => {
-    // 400/401: the token is dead already (expired, or that login ended). Nothing is left to revoke.
+    // 400/401: the server doesn't know this token (a forgery, or not a refresh token). Nothing is left to revoke.
+    // An expired token isn't one of them: the server still ends its login (Codex review of #47).
     if (res.ok || res.status === 400 || res.status === 401) {
-      setPendingRevoke(refresh, false);
+      void updatePendingRevokes((pending) => pending.filter((token) => token !== refresh));
       return;
     }
     retry(Math.max(Number(res.headers.get('Retry-After')) * 1000 || 0, delay));
-  }, () => retry(delay));
+  }, () => retry(delay)).finally(() => clearTimeout(timer));
 }
 
 function logout() {
@@ -916,5 +930,5 @@ async function start() {
 // online dots, which nothing pushes to us.
 setInterval(() => { if (state.me) loadChats().catch(() => {}); }, 45000);
 
-pendingRevokes().forEach((refresh) => revokeLogin(refresh));
+pendingRevokes().forEach((refresh) => attemptRevoke(refresh));
 if (state.access) start();

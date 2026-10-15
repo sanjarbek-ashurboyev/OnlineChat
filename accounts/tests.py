@@ -186,6 +186,25 @@ class RefreshRotationAndLogoutTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.refresh(renewed).status_code, 401)
 
+    def test_logout_with_an_expired_token_still_ends_the_login(self):
+        # Codex review of #47: a tab queued R0 for a retry, R0 expired meanwhile, and the tab's R1 (same login) kept
+        # working. An expired token is still proof that we issued it and which login it belongs to.
+        renewed = self.refresh(self.tokens['refresh']).data['refresh']
+        expired = RefreshToken(self.tokens['refresh'])
+        expired.set_exp(lifetime=timedelta(seconds=-10))
+        self.assertEqual(APIClient().post(self.LOGOUT_URL, {'refresh': str(expired)}).status_code, 200)
+        self.assertEqual(self.refresh(renewed).status_code, 401)
+
+    def test_logout_still_refuses_a_forged_or_an_expired_access_token(self):
+        forged = RefreshToken(self.tokens['refresh'])
+        forged.set_exp(lifetime=timedelta(seconds=-10))
+        forged_string = jwt.encode(forged.payload, 'not-the-server-key', algorithm='HS256')
+        self.assertEqual(APIClient().post(self.LOGOUT_URL, {'refresh': forged_string}).status_code, 401)
+        expired_access = AccessToken(self.tokens['access'])
+        expired_access.set_exp(lifetime=timedelta(seconds=-10))
+        self.assertEqual(APIClient().post(self.LOGOUT_URL, {'refresh': str(expired_access)}).status_code, 401)
+        self.assertEqual(self.refresh(self.tokens['refresh']).status_code, 200, 'the login must be untouched')
+
     def test_a_token_from_before_login_sessions_is_refused(self):
         # Issued before this change: no `sid`, so no session can say it's still the current one. Sign in again.
         self.assertEqual(self.refresh(str(RefreshToken.for_user(self.user))).status_code, 401)
