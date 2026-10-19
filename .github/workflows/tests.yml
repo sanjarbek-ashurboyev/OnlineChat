@@ -26,7 +26,9 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - name: No known vulnerabilities in pinned dependencies
-        run: pip install pip-audit==2.10.1 && pip-audit -r requirements.txt
+        # CVE-2026-106454 (GHSA-8pqf-f4m5-798g): a ReDoS in twisted.mail.imap4. We don't use Twisted's IMAP
+        # (Daphne uses only its networking core). Remove the ignore once Twisted ships a fix.
+        run: pip install pip-audit==2.10.1 && pip-audit -r requirements.txt --ignore-vuln CVE-2026-106454
       # SQLite, an in-memory channel layer and a fake presence store: no PostgreSQL or Redis needed.
       - run: python manage.py test --settings=root.settings_test --verbosity 2
       - name: Migrations are up to date

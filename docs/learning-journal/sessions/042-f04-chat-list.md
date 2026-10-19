@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-19 · **Phase:** Frontend redesign, Phase 1
 - **Task:** F-04 in the [frontend plan](../../frontend/plan.md) · **Branch:** `f-04-chat-list`
-- **Files:** `assets/js/avatar.js` (new), `assets/js/chats.js`, `assets/js/messages.js`, `assets/js/profile.js`,
+- **Files:** `assets/js/avatar.js` (new), `.github/workflows/tests.yml` (one ignore), `assets/js/chats.js`, `assets/js/messages.js`, `assets/js/profile.js`,
   `assets/js/session.js`, `assets/app.css`, `templates/index.html`, `chats/test_browser.py`,
   `chats/test_browser_refresh.py`, docs
 - **Objective:** a chat list that looks like Telegram's and moves like an Apple list: everyone has a face (their
@@ -45,6 +45,12 @@
    `REQUIRE_BROWSER_TESTS=True`: **235 run, OK**, no `Too Many Requests` in the log. Ruff 0.16.10: all checks passed.
    ESLint (`no-undef`, `no-unused-vars`, run from outside the repo): no finding in the new code (its one finding,
    `atob` in `tokens.js`, was a global missing from the command's list).
+10. **CI's `pip-audit` failed on a new advisory, not on this code:** `twisted 26.4.0` (the newest release) has
+    CVE-2026-106454 (GHSA-8pqf-f4m5-798g), a ReDoS in `twisted.mail.imap4`, and there is no fixed release yet. We
+    don't use Twisted's IMAP server (Daphne uses only its networking core), so with your approval the audit step in
+    `.github/workflows/tests.yml` ignores that one ID, with a comment saying why. Locally: with the ignore,
+    "No known vulnerabilities found, 1 ignored" (exit 0); without it, exit 1. **Remove the ignore once Twisted ships a
+    fix.**
 
 **Not done:**
 - **"You:" and ticks in the row.** The API's `last_message` is `{text, created_at}`: it doesn't say who sent it, so
