@@ -760,3 +760,22 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   sideways drag for itself (`pointercancel`) instead of sending us `pointermove`s.
 - **Fix:** `touch-action: pan-y pinch-zoom` on `.messages` too.
 - **Lesson:** put `touch-action` on the scrolling element the finger is in, not only on an outer box.
+
+## P-48 · A browser test's fake message was undone by a chat-list load that answered late
+
+- **Session:** [043](sessions/043-f05-messages.md)
+- **Observed:** while checking F-05, the full browser suite failed once in an F-04 test
+  (`test_a_row_moving_again_mid_glide_starts_from_where_it_is`: "108 not greater than 109", the row had not moved),
+  and three back-to-back runs of `ChatRowTests` each had one error after a 30 s wait. Run alone, the tests passed.
+- **Root cause (Confirmed: a throwaway test that delayed the second `/chats/` answer by 0.4 s showed the order going
+  back to the server's):** a page loads the chat list twice when it starts, once in `start()` and once when the socket
+  is first ready. `open_app()` waits only for the socket, so the second answer could arrive *after* the test had
+  delivered a message frame that exists only in the page, not in the database. The answer carries the server's order,
+  which doesn't have that message, so the row went back to where it was. The app was right to trust the server; the
+  test had built a world the server didn't share.
+- **Fix:** in `ChatRowTests`, `open()` waits until both start-up loads have finished, and `message_frame()` saves each
+  message to the database before delivering it, so any later load agrees. The in-page wait for "the row is moving" now
+  runs frame by frame inside the browser, with a 120-frame limit so a failure can't hang the run. Re-checked with the
+  0.4 s delay: the order holds.
+- **Lesson:** a test that fakes a server event must either make the server agree (save the data) or wait until nothing
+  else from the server is still on its way. And a "wait until" in a test needs a limit.

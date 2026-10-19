@@ -86,6 +86,8 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
   (it sits in a closed `<dialog>`, session 041).
 - **In a `subTest` loop, keep every assertion of a case inside its `with self.subTest(...)`.** One outside it ends
   the test at the first failure, and the later cases never run.
+- **A message frame faked in a browser test must exist in the database too**, and wait for both chat-list loads of
+  a start (`ChatRowTests.open()`): a load that answers later puts the server's order back. → [P-48](docs/learning-journal/problems-and-solutions.md#p-48--a-browser-tests-fake-message-was-undone-by-a-chat-list-load-that-answered-late)
 - **`page.evaluate` waits for a promise you return.** If the test holds that promise's request (`page.route`),
   it deadlocks. Start it with `void loadChats()` instead (session 021).
 - **In a browser test, don't call code that uses `async_to_sync` from the test thread** (e.g. a view that

@@ -59,8 +59,11 @@ never `innerHTML`. Dark mode follows the system. Phones get a list/chat view swi
      `#me-name`, `#peer-name`, `#peer-status`, `#peer-conn`, `#peer-avatar`, `#conn-state.is-open` (its text: "Chats"),
      `#back`, `.sidebar` and `.pane` (`inert` when off screen on a phone),
      `#message-rows .row` (`.row.out`, `.bubble`, `.meta`), `#composer-input`, `#send-error`
-   - classes: `.chat-name`, `.badge`; `.row.out .meta` ends with `✓✓` when read
-   - accessible names: "Show more chats", "Load older messages", the chat row's name; placeholder
+   - classes: `.chat-name`, `.badge`; a read message's row has `data-status="read"` (until F-05: `.meta` ended with
+     `✓✓`; ticks are icons now, named "Sent" and "Read"). Since F-05: `.day` (date dividers), `.group-start` /
+     `.group-end` (runs), `.row.is-outbox` with `data-status` `sending` / `failed` (our message on its way), `#to-bottom`
+   - accessible names: "Show more chats", "Load older messages" (since F-05 shown only to retry a page that failed;
+     older pages load on scrolling up), "Scroll to the newest message", "Send again", the chat row's name; placeholder
      "Search by name or phone" (was "Find someone by phone…" until F-04: the field filters by name too); `#filter-empty`;
      the open chat's row has `aria-current="true"`
    - globals the tests call through `page.evaluate`: `state`, `api`, `loadChats`, `start`, `pendingRevokes`,
@@ -78,7 +81,7 @@ never `innerHTML`. Dark mode follows the system. Phones get a list/chat view swi
 | **F-02** | Design system: colour roles (light, dark, high contrast), type scale, space and radius, SVG icons, press feedback, reduced motion | A token sheet in CSS; icons have `aria-label`; text pairs pass 4.5:1. **Done** (session 040) |
 | **F-03** | Layout and navigation: frosted header and composer (materials, reduced transparency), push/back transitions on phones with swipe-back (the spring helper), ☰ drawer, connection status in words | **Done** (session 041). **You try it on your phone** before F-04 |
 | **F-04** | Chat list: initials avatars, new rows, rows glide when a chat moves to the top, local filter | **Done** (session 042). Not in it: "You:" and ticks in the row; the API's `last_message` doesn't say who sent it (needs `sender_id` and `id`, a small backend change) |
-| **F-05** | Messages: wallpaper, tails, grouping, date dividers, SVG ticks, ↓ button, load on scroll, "Not delivered" + retry | |
+| **F-05** | Messages: wallpaper, tails, grouping, date dividers, SVG ticks, ↓ button, load on scroll, "Not delivered" + retry | **Done** (session 043). No backend change needed. Not in it: more than one message on its way at a time; a spinner while an older page loads |
 | **F-06** | Login screen and the settings panel | |
 
 ## Phase 2: features with no backend change

@@ -16,6 +16,11 @@
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
   <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
   <symbol id="i-send" viewBox="0 0 24 24"><path d="M20.5 3.5 3.5 10.5l7 3 3 7z"/><path d="M20.5 3.5l-10 10"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M5 9l7 7 7-7"/></symbol>
+  <!-- Message status, drawn at 16×12 in the bubble's corner (F-05) -->
+  <symbol id="i-check" viewBox="0 0 16 12"><path d="M2.5 6.5l3 3 6-7"/></symbol>
+  <symbol id="i-check2" viewBox="0 0 16 12"><path d="M1 6.5l3 3 6-7"/><path d="M7.5 9.5l6-7"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 16 12"><circle cx="8" cy="6" r="4.5"/><path d="M8 3.8V6l1.5 1"/></symbol>
 </svg>
 
 <!-- ───────────── Auth ───────────── -->
@@ -81,7 +86,7 @@
   </aside>
 
   <section class="pane">
-    <div id="pane-empty" class="empty pane-empty">Pick a conversation</div>
+    <div id="pane-empty" class="pane-empty"><span class="service">Pick a conversation</span></div>
 
     <div id="pane-chat" hidden>
       <!-- Header and composer stick to the edges of the scrolling area, so messages pass under their glass. -->
@@ -96,10 +101,12 @@
           </div>
         </header>
 
+        <!-- Older messages load as you scroll up; this button only appears to retry a page that failed (F-05). -->
         <button id="load-older" class="load-older" hidden>Load older messages</button>
         <div id="message-rows"></div>
 
         <div class="composer-bar material">
+          <button id="to-bottom" class="to-bottom" title="Newest messages" aria-label="Scroll to the newest message"><svg class="icon" aria-hidden="true"><use href="#i-down"/></svg><span class="badge" hidden></span></button>
           <form id="send-form" class="composer">
             <textarea id="composer-input" rows="1" placeholder="Write a message…"
                       autocomplete="off"></textarea>
