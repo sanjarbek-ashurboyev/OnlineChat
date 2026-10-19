@@ -66,8 +66,10 @@
       <h1 class="sidebar-title"><span id="conn-state" class="conn" role="status">Connecting…</span></h1>
     </header>
 
-    <form id="lookup-form" class="lookup">
-      <input name="phone_number" type="tel" placeholder="Find someone by phone…" required>
+    <!-- Typing filters the loaded chats by name; Search (or Enter) finds someone by phone number (F-04). -->
+    <form id="lookup-form" class="lookup" role="search">
+      <input name="query" type="search" placeholder="Search by name or phone" required
+             autocomplete="off" enterkeyhint="search" aria-label="Search by name or phone">
       <button type="submit" class="icon-btn" title="Search" aria-label="Search"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg></button>
     </form>
     <p id="lookup-msg" class="lookup-msg" hidden></p>
@@ -75,6 +77,7 @@
     <ul id="chat-list" class="chat-list"></ul>
     <button id="more-chats" class="load-older" hidden>Show more chats</button>
     <p id="chat-empty" class="empty">No conversations yet.<br>Search for a phone number to start one.</p>
+    <p id="filter-empty" class="empty" hidden></p>
   </aside>
 
   <section class="pane">

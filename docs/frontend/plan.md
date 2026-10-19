@@ -61,7 +61,8 @@ never `innerHTML`. Dark mode follows the system. Phones get a list/chat view swi
      `#message-rows .row` (`.row.out`, `.bubble`, `.meta`), `#composer-input`, `#send-error`
    - classes: `.chat-name`, `.badge`; `.row.out .meta` ends with `✓✓` when read
    - accessible names: "Show more chats", "Load older messages", the chat row's name; placeholder
-     "Find someone by phone…"
+     "Search by name or phone" (was "Find someone by phone…" until F-04: the field filters by name too); `#filter-empty`;
+     the open chat's row has `aria-current="true"`
    - globals the tests call through `page.evaluate`: `state`, `api`, `loadChats`, `start`, `pendingRevokes`,
      `revokeLogin`
 2. **Checked:** `make test`, the browser tests on real Postgres + Redis with `REQUIRE_BROWSER_TESTS=True`, Ruff, and
@@ -76,7 +77,7 @@ never `innerHTML`. Dark mode follows the system. Phones get a list/chat view swi
 | **F-01** | Split `app.js` into ES modules, no behaviour change | All browser tests pass unchanged |
 | **F-02** | Design system: colour roles (light, dark, high contrast), type scale, space and radius, SVG icons, press feedback, reduced motion | A token sheet in CSS; icons have `aria-label`; text pairs pass 4.5:1. **Done** (session 040) |
 | **F-03** | Layout and navigation: frosted header and composer (materials, reduced transparency), push/back transitions on phones with swipe-back (the spring helper), ☰ drawer, connection status in words | **Done** (session 041). **You try it on your phone** before F-04 |
-| **F-04** | Chat list: initials avatars, new rows, rows glide when a chat moves to the top, local filter | |
+| **F-04** | Chat list: initials avatars, new rows, rows glide when a chat moves to the top, local filter | **Done** (session 042). Not in it: "You:" and ticks in the row; the API's `last_message` doesn't say who sent it (needs `sender_id` and `id`, a small backend change) |
 | **F-05** | Messages: wallpaper, tails, grouping, date dividers, SVG ticks, ↓ button, load on scroll, "Not delivered" + retry | |
 | **F-06** | Login screen and the settings panel | |
 

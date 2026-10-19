@@ -1,4 +1,5 @@
-import { $, AVATAR_FALLBACK, state } from './state.js';
+import { $, state } from './state.js';
+import { avatarSrc } from './avatar.js';
 import { lastSeenText, timeOf } from './format.js';
 import { api } from './api.js';
 import { renderChats } from './chats.js';
@@ -152,7 +153,7 @@ export async function openChat(chatId) {
 /** The open chat's header. Drawn on opening, and again by every chat list poll (M-13). */
 export function showPeer(peer) {
   state.peer = peer;
-  $('peer-avatar').src = peer.avatar || AVATAR_FALLBACK;
+  $('peer-avatar').src = avatarSrc(peer);
   $('peer-name').textContent = peer.display_name || 'Unnamed';
   $('peer-status').textContent = lastSeenText(peer);
 }

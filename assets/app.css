@@ -327,6 +327,7 @@ button:focus-visible {
 .conn:not(.is-open) { color: var(--color-text-secondary); font-weight: 500; }
 
 .lookup { display: flex; gap: var(--space-1); align-items: center; padding: var(--space-3) var(--space-3) var(--space-2) var(--space-4); }
+.lookup input { border-radius: var(--radius-full); padding-inline: var(--space-4); -webkit-appearance: none; appearance: none; }
 .lookup-msg { margin: 0 var(--space-4) var(--space-2); font-size: var(--text-footnote); color: var(--color-text-secondary); }
 
 .chat-list {
@@ -338,24 +339,48 @@ button:focus-visible {
   min-height: 0;
 }
 
+.chat-list li {
+  position: relative;                      /* a gliding row can pass over the others (z-index) */
+  background: var(--color-bg);
+}
+
+/* A row: a 54px avatar, then name and time over a two-line preview with the unread count under the time. */
 .chat-row {
+  --avatar-size: 3.375rem;
+  position: relative;
   display: flex;
   gap: var(--space-3);
   align-items: center;
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-3);
   border: none;
   background: none;
   width: 100%;
   text-align: left;
   color: inherit;
-  border-bottom: 1px solid var(--color-separator);
   transition: background-color var(--duration-state) var(--ease-out);
+}
+.chat-row:focus-visible { outline-offset: -2px; }
+/* A hairline from the text to the edge, as in iOS lists: the avatars stand free. */
+.chat-row::after {
+  content: '';
+  position: absolute;
+  left: calc(var(--space-3) * 2 + var(--avatar-size));
+  right: 0;
+  bottom: 0;
+  border-bottom: 1px solid var(--color-separator);
 }
 .chat-row:active { background: var(--color-bg-secondary); transition-duration: 0s; }
 .chat-row.is-active { background: var(--color-bg-secondary); }
+.chat-row .avatar { width: var(--avatar-size); height: var(--avatar-size); flex-basis: var(--avatar-size); }
 
-.chat-main { flex: 1; min-width: 0; }
-.chat-top { display: flex; justify-content: space-between; gap: var(--space-2); align-items: baseline; }
+.chat-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--space-2);
+  align-items: baseline;
+}
 .chat-name {
   font-size: var(--text-headline);
   font-weight: 600;
@@ -368,37 +393,59 @@ button:focus-visible {
   font-size: var(--text-caption);
   letter-spacing: var(--tracking-loose);
   color: var(--color-text-secondary);
-  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
 }
 .chat-preview {
-  font-size: var(--text-footnote);
+  grid-column: 1;
+  font-size: var(--text-body);
+  line-height: 1.3;
   color: var(--color-text-secondary);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: anywhere;
 }
+.chat-preview:last-child { grid-column: 1 / -1; }   /* no unread count: the preview takes its space too */
 
-.avatar-wrap { position: relative; flex: 0 0 2.5rem; }
+.avatar-wrap { position: relative; flex: 0 0 auto; display: flex; }
 .dot {
   position: absolute;
-  right: -1px;
-  bottom: -1px;
-  width: 11px;
-  height: 11px;
+  right: 1px;
+  bottom: 1px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  border: 2px solid var(--color-bg);
-  background: var(--color-text-secondary);
+  border: 2.5px solid var(--color-bg);
+  background: var(--color-online);
 }
-.dot.is-online { background: var(--color-online); }
 
 .badge {
+  grid-column: 2;
+  align-self: start;
+  justify-self: end;
+  margin-top: 3px;
+  min-width: 1.375rem;
+  height: 1.375rem;
+  padding: 0 .4rem;
+  display: grid;
+  place-items: center;
   background: var(--color-accent-fill);
   color: var(--color-on-accent);
   border-radius: var(--radius-full);
   font-size: var(--text-caption);
-  font-weight: 700;
-  padding: 1px 7px;
-  margin-left: var(--space-2);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* With a list and a chat side by side, the open chat's row is filled with the accent, as in Telegram for Mac. */
+@media (min-width: 761px) {
+  .chat-row.is-active { background: var(--color-accent-fill); color: var(--color-on-accent); }
+  .chat-row.is-active :is(.chat-time, .chat-preview) { color: var(--color-on-accent); }
+  .chat-row.is-active .badge { background: var(--color-on-accent); color: var(--color-accent-fill); }
+  .chat-row.is-active .dot { border-color: var(--color-accent-fill); }
+  .chat-row.is-active::after { display: none; }
 }
 
 .empty {

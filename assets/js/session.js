@@ -1,7 +1,7 @@
 import { $, START_RETRY_MS, state } from './state.js';
 import { clearTokens, revokeLogin, saveTokens } from './tokens.js';
 import { api, errorText } from './api.js';
-import { loadChats } from './chats.js';
+import { loadChats, renderChats } from './chats.js';
 import { closeSocket, connectInbox } from './socket.js';
 import { composer, settleSend } from './composer.js';
 import { renderMe } from './profile.js';
@@ -92,7 +92,8 @@ export function signOut() {
   $('load-older').disabled = $('more-chats').disabled = false;
   state.syncedUpTo = state.olderQuery = null;
   state.seenIds.clear();
-  $('chat-list').textContent = '';
+  $('lookup-form').reset();
+  renderChats({ glide: false });   // state.chats is empty: every row goes
   $('message-rows').textContent = '';
   composer.value = '';
   $('send-error').hidden = true;
