@@ -86,6 +86,8 @@ Add a line whenever a new mistake costs time. Keep each rule to one or two lines
   (it sits in a closed `<dialog>`, session 041).
 - **In a `subTest` loop, keep every assertion of a case inside its `with self.subTest(...)`.** One outside it ends
   the test at the first failure, and the later cases never run.
+- **State that belongs to one chat (a pending send, a draft) is kept per chat id, and forgotten on sign-out.** Opening
+  another chat used to throw away a send that then failed; chat ids are shared by both people in it. → [P-49](docs/learning-journal/problems-and-solutions.md#p-49--a-send-that-failed-after-switching-chats-disappeared)
 - **A message frame faked in a browser test must exist in the database too**, and wait for both chat-list loads of
   a start (`ChatRowTests.open()`): a load that answers later puts the server's order back. → [P-48](docs/learning-journal/problems-and-solutions.md#p-48--a-browser-tests-fake-message-was-undone-by-a-chat-list-load-that-answered-late)
 - **`page.evaluate` waits for a promise you return.** If the test holds that promise's request (`page.route`),

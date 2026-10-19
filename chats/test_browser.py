@@ -336,6 +336,31 @@ class SessionLifecycleTests(BrowserTestCase):
 
         self.wait_until(page, lambda: Message.objects.filter(text='after logging back in').exists())
 
+    def test_a_failed_send_is_not_shown_to_the_next_account(self):
+        # Codex review of #55: failed sends now wait per chat. The other person in that chat has the same chat id,
+        # so signing out must forget them, or they'd see our message as theirs.
+        def swallow_sends(ws):
+            server = ws.connect_to_server()
+            ws.on_message(lambda frame: None if '"message"' in frame else server.send(frame))
+
+        def setup(page):
+            page.clock.install()
+            page.route_web_socket('**/ws/inbox/**', swallow_sends)
+
+        page = self.open_app(setup=setup)
+        page.get_by_role('button', name='User 2').click()
+        self.send(page, 'mine, not delivered')
+        page.wait_for_timeout(300)
+        page.clock.fast_forward(11_000)
+        expect(page.locator('#message-rows .row.is-outbox')).to_have_attribute('data-status', 'failed')
+
+        self.log_out(page)
+        self.log_in(page, self.friend)
+        page.get_by_role('button', name='User 1').click()
+        expect(page.locator('#peer-name')).to_have_text('User 1')
+        page.wait_for_timeout(300)
+        expect(page.locator('#message-rows .row.is-outbox')).to_have_count(0)
+
     def test_a_lost_echo_does_not_block_sending_and_the_saved_message_shows(self):
         def drop_echoes(ws):
             server = ws.connect_to_server()
@@ -1296,3 +1321,45 @@ class MessageViewTests(BrowserTestCase):
         expect(page.locator('#message-rows .row')).to_have_count(1)
         expect(page.locator('#composer-input')).to_have_value('')
         self.assertEqual(Message.objects.filter(text='try again').count(), 1)
+
+    def test_a_send_that_fails_after_you_switch_chats_waits_there_to_be_sent_again(self):
+        # Codex review of #55: send in A, open B, the send fails, back to A: the message was gone, with nothing to retry.
+        third = make_user(3)
+        Chat.objects.get_or_create_chat(self.me, third)
+        swallowing = [True]
+
+        def swallow_sends(ws):
+            server = ws.connect_to_server()
+            ws.on_message(lambda frame: None if swallowing[0] and '"message"' in frame else server.send(frame))
+
+        def setup(page):
+            page.clock.install()
+            page.route_web_socket('**/ws/inbox/**', swallow_sends)
+
+        page = self.open_app(setup=setup)
+        page.get_by_role('button', name='User 2').click()
+        page.locator('#composer-input').fill('unsent original')
+        page.keyboard.press('Enter')
+        page.wait_for_function('state.sending !== null')
+        page.get_by_role('button', name='User 3').click()
+        expect(page.locator('#peer-name')).to_have_text('User 3')
+        page.wait_for_timeout(100)
+        page.clock.fast_forward(11_000)                     # no echo, and not in the history: it failed
+        page.wait_for_function('state.sending === null')
+        expect(page.locator('#message-rows .row.is-outbox')).to_have_count(0)   # not drawn in B...
+        expect(page.locator('#composer-input')).to_have_value('')               # ...nor put in B's composer
+
+        page.get_by_role('button', name='User 2').click()
+        expect(page.locator('#peer-name')).to_have_text('User 2')
+        outbox = page.locator('#message-rows .row.is-outbox')
+        expect(outbox).to_have_attribute('data-status', 'failed')
+        expect(outbox).to_contain_text('unsent original')
+        expect(outbox).to_contain_text('Not delivered')
+        self.assertFalse(Message.objects.filter(text='unsent original').exists())
+
+        swallowing[0] = False
+        outbox.get_by_role('button', name='Send again').click()
+        self.wait_until(page, lambda: Message.objects.filter(text='unsent original').exists())
+        expect(outbox).to_have_count(0)
+        expect(page.locator('#message-rows .row')).to_have_count(1)
+        self.assertEqual(Message.objects.filter(text='unsent original').count(), 1)

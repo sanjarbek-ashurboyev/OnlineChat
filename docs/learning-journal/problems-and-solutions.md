@@ -779,3 +779,16 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   0.4 s delay: the order holds.
 - **Lesson:** a test that fakes a server event must either make the server agree (save the data) or wait until nothing
   else from the server is still on its way. And a "wait until" in a test needs a limit.
+
+## P-49 · A send that failed after switching chats disappeared
+
+- **Session:** [043](sessions/043-f05-messages.md#follow-up-codex-review-of-55-round-1-block-one-medium) (Codex review of #55)
+- **Observed:** send in chat A while the message frame is lost, open chat B, the 10 s check finds nothing, go back to
+  A: no bubble, an empty composer, and the message isn't in the database. Nothing told the user, nothing could retry it.
+- **Root cause (Confirmed: the test reproducing it fails on `4bfaa9d` and passes after the fix):** the pending
+  bubble was kept in one variable that opening another chat cleared, and the failure path puts the text back only
+  into the open chat's composer (rightly: not into B's). So the only copies of the message were dropped.
+- **Fix:** keep pending and failed sends per chat (`outboxes` in `assets/js/messages.js`) and draw a chat's entry when
+  it opens; forget them all on sign-out, because the other person in a chat shares its id.
+- **Lesson:** per-conversation state belongs in a map keyed by conversation, not in "the current one". And when you
+  key by an id that two accounts share, clear it when the account changes.

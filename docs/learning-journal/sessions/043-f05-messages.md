@@ -63,12 +63,33 @@
 - **One message on its way at a time** (as before). Pressing Enter on a second message while the first has no answer
   yet does nothing; the text stays in the composer. Usually that window is a few milliseconds; after a lost echo it
   is up to 10 s.
-- One "Not delivered" bubble at a time: a new send replaces an older failed one (its text was put back in the
-  composer).
+- One "Not delivered" bubble per chat: a new send in that chat replaces an older failed one (its text was put back
+  in the composer).
 - No spinner while an older page loads (it's usually quick).
-- A "Not delivered" bubble is lost if you switch chats (the text stays in the composer, as before).
+- ~~A "Not delivered" bubble is lost if you switch chats (the text stays in the composer, as before).~~ Wrong on both
+  counts: the bubble *and* the text were lost. Codex found it; fixed in the follow-up below.
 - "Today" turns into "Yesterday" only when the list is redrawn, not at midnight by itself.
 - No backend change was needed.
+
+## Follow-up: Codex review of #55, round 1 (BLOCK, one Medium)
+- **Reproduced:** send in chat A with message frames dropped, open chat B, wait out the 10 s check, go back to A:
+  not in the database, no bubble, an empty composer, nothing to send again. Codex's script became
+  `test_a_send_that_fails_after_you_switch_chats_waits_there_to_be_sent_again` (`MessageViewTests`); it **failed on
+  `4bfaa9d`** (no bubble in A) and passes now.
+- **Root cause (Confirmed by that test):** the bubble lived in one variable, and opening another chat threw it away
+  (`outbox = null` in `openChat`). `failSend()` puts the text back only into the open chat's composer, on purpose
+  (A's text must not land in B's composer), so once you had left A nothing kept the message.
+- **Fix:** `outboxes`, a `Map` from chat id to `{ sent, status, at, row }`, kept across chat switches. A failure
+  while you're elsewhere marks that chat's entry `failed`; opening the chat draws it again: "Not delivered" with
+  "Send again", or the clock if it's still on its way. The real message still removes it (through `appendMessage`,
+  which the chat's history load goes through too). A new send replaces that chat's entry only.
+- **New risk, new test:** both people in a chat share its id, so an entry left from one account would show up for the
+  next account to sign in on that tab, as *their* message. `signOut()` calls `forgetOutboxes()`.
+  `test_a_failed_send_is_not_shown_to_the_next_account` (`SessionLifecycleTests`) fails with that call commented
+  out and passes with it.
+- **Results:** `make test` **177 run, OK (skipped=23)** (242 found); real Postgres + Redis with `REQUIRE_BROWSER_TESTS=True` **242 run, OK**, no `Too Many Requests`; Ruff and ESLint clean.
+- **Lesson:** state that belongs to one chat (a pending send, later a draft) must be kept per chat; "the open chat"
+  is only where it's drawn. P-49.
 
 ## Concepts
 

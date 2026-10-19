@@ -116,10 +116,10 @@ export function appendMessage(msg) {
   if (above) above.after(row);
   else rows.prepend(row);
   // The real message takes the place of its bubble, and of the copy put back in the composer.
-  if (outbox && msg.sender_id === state.me.id && state.activeId === outbox.sent.chatId
-      && msg.text === outbox.sent.text && msg.id > outbox.sent.after) {
-    outbox.row.remove();
-    outbox = null;
+  const entry = outboxes.get(state.activeId);
+  if (entry && msg.sender_id === state.me.id && msg.text === entry.sent.text && msg.id > entry.sent.after) {
+    entry.row?.remove();
+    outboxes.delete(state.activeId);
     clearComposerIf(msg.text);
   }
   decorate();
@@ -131,24 +131,39 @@ export function scrollToBottom() {
 
 /* ── our message on its way ─────────────── */
 
-let outbox = null;   // { sent, row }: the bubble of our latest send, until the real message takes its place
+/* Per chat: { sent, status, at, row } for our latest send there, until its real message arrives. Kept when you open
+   another chat, so a send that fails meanwhile waits in its own chat with "Send again" (Codex review of #55). */
+const outboxes = new Map();
 
-/** Draw our message at once, with a clock. One at a time: it replaces a bubble that wasn't delivered. */
-export function showSending(sent) {
-  outbox?.row.remove();
-  const row = bubbleRow({ mine: true, text: sent.text, at: Date.now() });
-  row.classList.add('is-outbox');
-  setStatus(row, 'sending');
-  outbox = { sent, row };
-  $('message-rows').append(row);
+function drawOutbox(entry) {
+  entry.row = bubbleRow({ mine: true, text: entry.sent.text, at: entry.at });
+  entry.row.classList.add('is-outbox');
+  if (entry.status === 'failed') markNotDelivered(entry.row, entry.sent);
+  else setStatus(entry.row, 'sending');
+  $('message-rows').append(entry.row);
   decorate();
+}
+
+/** Draw our message at once, with a clock. One per chat: it replaces a bubble there that wasn't delivered. */
+export function showSending(sent) {
+  outboxes.get(sent.chatId)?.row?.remove();
+  const entry = { sent, status: 'sending', at: Date.now(), row: null };
+  outboxes.set(sent.chatId, entry);
+  if (sent.chatId !== state.activeId) return;
+  drawOutbox(entry);
   scrollToBottom();
 }
 
-/** No answer, or a refusal: say so on the bubble, with a button that sends it again. */
+/** No answer, or a refusal: say so on the bubble, with a button that sends it again. If its chat isn't open, it
+ *  says so when you open it. */
 export function showNotDelivered(sent) {
-  if (outbox?.sent !== sent) return;
-  const { row } = outbox;
+  const entry = outboxes.get(sent.chatId);
+  if (entry?.sent !== sent) return;
+  entry.status = 'failed';
+  if (entry.row?.isConnected) markNotDelivered(entry.row, sent);
+}
+
+function markNotDelivered(row, sent) {
   setStatus(row, 'failed');
   const note = document.createElement('span');
   note.className = 'not-delivered';
@@ -162,6 +177,11 @@ export function showNotDelivered(sent) {
   retry.textContent = '!';
   retry.addEventListener('click', () => { if (sendText(sent.text)) clearComposerIf(sent.text); });
   row.prepend(retry);
+}
+
+/** Signing out: the next account must never see these. */
+export function forgetOutboxes() {
+  outboxes.clear();
 }
 
 /* ── the ↓ button ───────────────────────── */
@@ -289,7 +309,7 @@ export async function openChat(chatId) {
   $('pane-empty').hidden = true;
   $('pane-chat').hidden = false;
   $('message-rows').textContent = '';
-  outbox = null;
+  if (outboxes.has(chatId)) drawOutbox(outboxes.get(chatId));   // sending, or waiting to be sent again
   unseen = 0;
   updateDown();
   $('send-error').hidden = true;

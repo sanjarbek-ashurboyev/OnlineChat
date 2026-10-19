@@ -5,6 +5,7 @@ import { loadChats, renderChats } from './chats.js';
 import { closeSocket, connectInbox } from './socket.js';
 import { composer, settleSend } from './composer.js';
 import { renderMe } from './profile.js';
+import { forgetOutboxes } from './messages.js';
 import { closeMenu, setView } from './nav.js';
 
 /* ── auth screen ────────────────────────── */
@@ -95,6 +96,7 @@ export function signOut() {
   $('lookup-form').reset();
   renderChats({ glide: false });   // state.chats is empty: every row goes
   $('message-rows').textContent = '';
+  forgetOutboxes();
   composer.value = '';
   $('send-error').hidden = true;
   $('lookup-msg').hidden = true;
