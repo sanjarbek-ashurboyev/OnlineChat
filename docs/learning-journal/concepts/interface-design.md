@@ -92,16 +92,48 @@ On a phone the list and the chat lie on top of each other. The one off screen ge
 clicked, or read by a screen reader. The incoming panel loses `inert` at once; the outgoing one gets it when it has
 finished leaving, so a finger can still catch it on the way out.
 
+## Rows that glide: FLIP with a spring (F-04)
+- **Definition:** FLIP stands for **F**irst, **L**ast, **I**nvert, **P**lay. Note where an element is on screen
+  (first), let the page jump it to its new place (last), push it back with a `transform` by the difference (invert),
+  then animate that `transform` to zero (play). The layout changes once and at once; only the picture moves.
+- **Why:** the page can't animate a change of order on its own. FLIP makes a chat that moves to the top slide there,
+  and the rows it passes slide down to make room, so the eye can follow what happened.
+- **How (ours, `renderChats` in `assets/js/chats.js`):** `offsetTop` is the row's place in the layout and ignores
+  transforms, so "where it is on screen now" is `offsetTop` plus its spring's current value. Using the spring for the
+  play step makes it interruptible: a row moving again half-way starts from where it is, not from where it was going.
+
+```js
+const wasAt = row.li.offsetTop + (row.glide?.value ?? 0);   // first (even mid-glide)
+list.insertBefore(row.li, list.firstElementChild);           // last: the layout jumps
+const offset = wasAt - row.li.offsetTop;                     // invert
+row.glide.jump(offset);                                      // it is drawn where it was...
+row.glide.to(0);                                             // ...and play: it springs to its place
+```
+- **Keep the elements:** FLIP needs the same element before and after. A list rebuilt from scratch has nothing to
+  measure, and it also drops the keyboard's focus. Keep one element per id, and move only the ones out of place
+  (moving a node blurs it).
+
+## Initials avatars
+Someone without a photo gets the first letters of their name ("Ali Valiyev" → "AV") on a colour picked by their id,
+so the same person always has the same colour. White letters need 3:1 against the colour (large text); ours give at
+least 3.25:1 where the letters sit. We draw them as a small SVG in the `<img>`'s `src`, so every place that shows
+an avatar keeps working the same way. The name is escaped before it goes into the SVG: it is markup.
+
 ## Alternatives
 - **Icon fonts:** easy, but screen readers may read the glyphs and a failed font load shows boxes.
 - **Emoji as icons** (what we had): look different on every system and can't take our colours.
 - **Sass variables instead of custom properties:** fixed at build time, so they can't change with dark mode.
+- **For the glide:** the Web Animations API (`el.animate`) or CSS transitions. Both run a fixed curve; interrupted, they
+  restart from a value you must read back yourself. Our spring already keeps position and speed.
 
 ## Common mistakes
 - Hex codes scattered through the rules: dark mode then needs a second copy of every rule.
 - Grey-on-grey hints that look "clean" but fall under 4.5:1 (our first secondary grey was 4.13:1 on a field).
 - Showing status only by colour (our connection dot still does; F-03 adds text).
 - Removing the focus outline without a replacement; keyboard users lose their place.
+- Rebuilding a list on every update (`list.textContent = ''`): nothing can glide, and focus is lost (F-04 fixed ours).
+- FLIP measured with `getBoundingClientRect()` after a transform was already set: you measure the picture, not the
+  layout. Use `offsetTop` for the layout and add the transform yourself.
 
 ## When to use
 From the second screen on. Any project that will have dark mode, or more than one person changing the styles.

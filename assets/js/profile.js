@@ -1,4 +1,5 @@
-import { $, AVATAR_FALLBACK, state } from './state.js';
+import { $, state } from './state.js';
+import { avatarSrc } from './avatar.js';
 import { api, errorText } from './api.js';
 import { loadChats } from './chats.js';
 
@@ -30,7 +31,7 @@ $('profile-save').addEventListener('click', async () => {
 });
 
 export function renderMe() {
-  $('me-avatar').src = state.me.avatar || AVATAR_FALLBACK;
+  $('me-avatar').src = avatarSrc(state.me);
   $('me-name').textContent = state.me.first_name || 'You';
   $('me-phone').textContent = state.me.phone_number;
 }

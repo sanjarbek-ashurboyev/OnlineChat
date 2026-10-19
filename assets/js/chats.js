@@ -1,5 +1,7 @@
-import { $, AVATAR_FALLBACK, state } from './state.js';
+import { $, state } from './state.js';
 import { shortDate } from './format.js';
+import { avatarSrc } from './avatar.js';
+import { createSpring } from './motion.js';
 import { api, errorText } from './api.js';
 import { openChat, showPeer } from './messages.js';
 import { showReadUpTo } from './socket.js';
@@ -68,58 +70,123 @@ $('more-chats').addEventListener('click', async () => {
   }
 });
 
-export function renderChats() {
-  const list = $('chat-list');
-  list.textContent = '';
-  $('chat-empty').hidden = state.chats.length > 0;
+/* Rows are kept between draws, one per chat id: a row that changes place can glide there, and a focused row keeps
+   the keyboard's focus. Each holds its elements, and a spring for its glide once it has moved. */
+const rows = new Map();
 
-  for (const chat of state.chats) {
-    const p = chat.participant;
+function makeRow(chatId) {
+  const part = (tag, className) => Object.assign(document.createElement(tag), { className });
+  const row = {
+    li: document.createElement('li'),
+    btn: part('button', 'chat-row'),
+    img: part('img', 'avatar'),
+    dot: part('span', 'dot'),
+    name: part('span', 'chat-name'),
+    time: part('span', 'chat-time'),
+    preview: part('span', 'chat-preview'),
+    badge: part('span', 'badge'),
+    glide: null,
+  };
+  row.img.alt = '';
+  row.btn.addEventListener('click', () => openChat(chatId));
+  const wrap = part('div', 'avatar-wrap');
+  wrap.append(row.img, row.dot);
+  const main = part('div', 'chat-main');
+  main.append(row.name, row.time, row.preview);
+  row.btn.append(wrap, main);
+  row.li.append(row.btn);
+  return row;
+}
 
-    const li = document.createElement('li');
-    const btn = document.createElement('button');
-    btn.className = 'chat-row' + (chat.id === state.activeId ? ' is-active' : '');
-    btn.addEventListener('click', () => openChat(chat.id));
-
-    const wrap = document.createElement('div');
-    wrap.className = 'avatar-wrap';
-    const img = document.createElement('img');
-    img.className = 'avatar';
-    img.src = p.avatar || AVATAR_FALLBACK;
-    img.alt = '';
-    const dot = document.createElement('span');
-    dot.className = 'dot' + (p.is_online ? ' is-online' : '');
-    wrap.append(img, dot);
-
-    const main = document.createElement('div');
-    main.className = 'chat-main';
-
-    const top = document.createElement('div');
-    top.className = 'chat-top';
-    const name = document.createElement('span');
-    name.className = 'chat-name';
-    name.textContent = p.display_name || 'Unnamed';
-    const time = document.createElement('span');
-    time.className = 'chat-time';
-    time.textContent = chat.last_message ? shortDate(chat.last_message.created_at) : '';
-    top.append(name, time);
-
-    const preview = document.createElement('div');
-    preview.className = 'chat-preview';
-    preview.textContent = chat.last_message ? chat.last_message.text : 'No messages yet';
-    if (chat.unread_count > 0) {
-      const badge = document.createElement('span');
-      badge.className = 'badge';
-      badge.textContent = chat.unread_count;
-      preview.append(badge);
-    }
-
-    main.append(top, preview);
-    btn.append(wrap, main);
-    li.append(btn);
-    list.append(li);
+function fillRow(row, chat) {
+  const p = chat.participant;
+  const active = chat.id === state.activeId;
+  row.btn.classList.toggle('is-active', active);
+  if (active) row.btn.setAttribute('aria-current', 'true');
+  else row.btn.removeAttribute('aria-current');
+  const src = avatarSrc(p);
+  if (row.img.getAttribute('src') !== src) row.img.src = src;
+  row.dot.hidden = !p.is_online;        // only "online" gets a dot; the chat's header says it in words
+  row.name.textContent = p.display_name || 'Unnamed';
+  row.time.textContent = chat.last_message ? shortDate(chat.last_message.created_at) : '';
+  row.preview.textContent = chat.last_message ? chat.last_message.text : 'No messages yet';
+  if (chat.unread_count > 0) {
+    row.badge.textContent = chat.unread_count;
+    row.preview.after(row.badge);
+  } else {
+    row.badge.remove();
   }
 }
+
+/** Slide a row from `offset` px away (where it was on screen) to its place. */
+function glide(row, offset) {
+  row.glide ??= createSpring((y) => {
+    row.li.style.transform = y ? `translateY(${y}px)` : '';
+    row.li.style.zIndex = y > 0 ? '1' : '';    // a row rising to the top passes over the ones making room
+  }, { response: 0.4 });
+  row.glide.jump(offset);
+  row.glide.to(0);
+}
+
+const filterField = $('lookup-form').elements.query;
+
+/** Typing in the search field shows only the loaded chats whose name contains it. */
+function matchesFilter(chat) {
+  const query = filterField.value.trim().toLocaleLowerCase();
+  return !query || (chat.participant.display_name || '').toLocaleLowerCase().includes(query);
+}
+
+/** Draw the list from state.chats. Rows that changed place glide there from where they are on screen now, even
+ *  halfway through an earlier glide; `glide: false` puts them in place at once (filtering, signing out). */
+export function renderChats({ glide: animate = true } = {}) {
+  const list = $('chat-list');
+  // Where each row is on screen now: its place in the layout (offsetTop ignores transforms), plus its glide.
+  const wasAt = new Map();
+  for (const [id, row] of rows) if (!row.li.hidden) wasAt.set(id, row.li.offsetTop + (row.glide?.value ?? 0));
+  const focused = list.contains(document.activeElement) ? document.activeElement : null;
+
+  // Moving a node takes focus off it, so only the rows out of place are moved.
+  const keep = new Set();
+  let next = list.firstElementChild;
+  for (const chat of state.chats) {
+    if (!rows.has(chat.id)) rows.set(chat.id, makeRow(chat.id));
+    const row = rows.get(chat.id);
+    fillRow(row, chat);
+    row.li.hidden = !matchesFilter(chat);
+    keep.add(chat.id);
+    if (row.li === next) next = next.nextElementSibling;
+    else list.insertBefore(row.li, next);
+  }
+  for (const [id, row] of rows) {
+    if (keep.has(id)) continue;
+    row.glide?.jump(0);
+    row.li.remove();
+    rows.delete(id);
+  }
+  if (focused?.isConnected && document.activeElement !== focused) focused.focus({ preventScroll: true });
+
+  for (const [id, row] of rows) {
+    if (row.li.hidden || !wasAt.has(id)) continue;      // a row just shown or added appears in place
+    const offset = wasAt.get(id) - row.li.offsetTop;
+    if (animate && Math.abs(offset) >= 0.5) glide(row, offset);
+    else row.glide?.jump(0);
+  }
+
+  const query = filterField.value.trim();
+  const shown = state.chats.filter(matchesFilter).length;
+  $('chat-empty').hidden = state.chats.length > 0;
+  $('filter-empty').hidden = !state.chats.length || shown > 0;
+  $('filter-empty').textContent = /^\+?[\d\s()-]+$/.test(query)
+    ? 'No chats match. To find this number, press Search.'
+    : `No chats match “${query}”.`;
+}
+
+filterField.addEventListener('input', () => renderChats({ glide: false }));
+filterField.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !filterField.value) return;
+  filterField.value = '';
+  renderChats({ glide: false });
+});
 
 /* ── lookup ─────────────────────────────── */
 
@@ -134,6 +201,7 @@ $('lookup-form').addEventListener('submit', async (e) => {
     const chat = await api('/chats/', { method: 'POST', body: { phone_number: field.value.trim() } });
     field.value = '';
     msg.hidden = true;
+    renderChats({ glide: false });     // the field doubles as the filter: show every chat again
     await loadChats();
     // An old conversation may be on a page that isn't loaded yet.
     if (!state.chats.some((c) => c.id === chat.id)) state.chats.push(chat);

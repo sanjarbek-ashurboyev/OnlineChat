@@ -31,7 +31,7 @@ class ChatRefreshTests(BrowserTestCase):
 
     def test_lookup_opened_chat_refreshes_its_header_and_blocked_details(self):
         page = self.open_app()
-        page.get_by_placeholder('Find someone by phone…').fill(phone(2))
+        page.get_by_placeholder('Search by name or phone').fill(phone(2))
         page.keyboard.press('Enter')
         expect(page.locator('#peer-name')).to_have_text('User 2')
         self.assertEqual(page.evaluate('state.chatPages'), 1)

@@ -221,7 +221,7 @@ class ChatListTests(BrowserTestCase):
 
     def test_looking_up_someone_whose_chat_is_not_loaded_opens_it(self):
         page = self.open_app()
-        page.get_by_placeholder('Find someone by phone…').fill(phone(2))
+        page.get_by_placeholder('Search by name or phone').fill(phone(2))
         page.keyboard.press('Enter')
         expect(page.locator('#peer-name')).to_have_text('User 2')
 
@@ -1042,3 +1042,112 @@ class LayoutTests(BrowserTestCase):
         page.wait_for_timeout(600)
         expect(page.locator('#app')).to_have_attribute('data-view', 'chat')
         self.assertIsNotNone(page.evaluate('state.activeId'))
+
+
+class ChatRowTests(BrowserTestCase):
+    """F-04: initials avatars, rows that glide to the top, a local filter, and focus that survives a redraw."""
+
+    def setUp(self):
+        super().setUp()
+        # Newest first: Bobur, Alisher, then Ali Valiyev (the friend's chat).
+        User.objects.filter(pk=self.friend.pk).update(first_name='Ali Valiyev')
+        self.say(self.chat, self.friend, 'oldest')
+        for n, name in ((3, 'Alisher'), (4, 'Bobur')):
+            other = make_user(n)
+            User.objects.filter(pk=other.pk).update(first_name=name)
+            chat, _ = Chat.objects.get_or_create_chat(self.me, other)
+            self.say(chat, other, f'hi from {name}')
+        self.bobur, self.bobur_chat = other, chat
+
+    def names(self, page):
+        return page.locator('#chat-list li:visible .chat-name').all_text_contents()
+
+    def deliver_to_the_oldest_row(self, page):
+        """A new message from the friend arrives over the socket. Returns where the friend's row was on screen just
+        before, where it is just after (same frame), and its place in the list."""
+        frame = {'type': 'message', 'id': 10**6, 'chat_id': self.chat.id, 'sender_id': self.friend.id,
+                 'text': 'new', 'created_at': timezone.now().isoformat()}
+        return page.evaluate('''frame => {
+            const row = [...document.querySelectorAll('#chat-list li')]
+              .find((li) => li.querySelector('.chat-name').textContent === 'Ali Valiyev');
+            const before = row.getBoundingClientRect().top;
+            state.ws.onmessage({ data: JSON.stringify(frame) });
+            return { before, after: row.getBoundingClientRect().top, index: [...row.parentNode.children].indexOf(row) };
+        }''', frame)
+
+    def first_row_top(self, page):
+        return page.evaluate("document.querySelector('#chat-list').getBoundingClientRect().top")
+
+    def test_someone_without_a_photo_gets_their_initials(self):
+        page = self.open_app()
+        expect(page.locator('#chat-list li')).to_have_count(3)
+        srcs = page.locator('#chat-list .avatar').evaluate_all('imgs => imgs.map(i => decodeURIComponent(i.src))')
+        self.assertIn('>B</text>', srcs[0])
+        self.assertIn('>AV</text>', srcs[2], 'first and last name')
+        page.get_by_role('button', name='Ali Valiyev').click()
+        src = page.locator('#peer-avatar').evaluate('img => decodeURIComponent(img.src)')
+        self.assertIn('>AV</text>', src)
+
+    def test_a_chat_with_a_new_message_glides_to_the_top(self):
+        page = self.open_app()
+        self.assertEqual(self.names(page), ['Bobur', 'Alisher', 'Ali Valiyev'])
+        moved = self.deliver_to_the_oldest_row(page)
+        self.assertEqual(self.names(page), ['Ali Valiyev', 'Bobur', 'Alisher'])
+        self.assertEqual(moved['index'], 0)
+        self.assertAlmostEqual(moved['after'], moved['before'], delta=1, msg='it starts from where it was on screen')
+        page.wait_for_function('''top => {
+            const row = document.querySelector('#chat-list li');
+            return Math.abs(row.getBoundingClientRect().top - top) < 1 && !row.style.transform;
+        }''', arg=self.first_row_top(page))
+
+    def test_a_row_moving_again_mid_glide_starts_from_where_it_is(self):
+        page = self.open_app()
+        self.deliver_to_the_oldest_row(page)
+        page.wait_for_timeout(80)   # Bobur is now gliding down, part of the way
+        frame = {'type': 'message', 'id': 10**6 + 1, 'chat_id': self.bobur_chat.id, 'sender_id': self.bobur.id,
+                 'text': 'again', 'created_at': timezone.now().isoformat()}
+        moved = page.evaluate('''frame => {
+            const row = [...document.querySelectorAll('#chat-list li')]
+              .find((li) => li.querySelector('.chat-name').textContent === 'Bobur');
+            const before = row.getBoundingClientRect().top;
+            state.ws.onmessage({ data: JSON.stringify(frame) });
+            return { before, after: row.getBoundingClientRect().top };
+        }''', frame)
+        self.assertGreater(moved['before'], self.first_row_top(page) + 1, 'it was still on its way down')
+        self.assertAlmostEqual(moved['after'], moved['before'], delta=1, msg='no jump')
+        self.assertEqual(self.names(page), ['Bobur', 'Ali Valiyev', 'Alisher'])
+
+    def test_with_reduce_motion_the_row_is_at_the_top_at_once(self):
+        page = self.open_app(reduced_motion='reduce')
+        moved = self.deliver_to_the_oldest_row(page)
+        self.assertAlmostEqual(moved['after'], self.first_row_top(page), delta=1)
+
+    def test_typing_filters_the_loaded_chats_by_name(self):
+        page = self.open_app()
+        search = page.get_by_placeholder('Search by name or phone')
+        search.fill('ALI')
+        self.assertEqual(self.names(page), ['Alisher', 'Ali Valiyev'])
+        search.fill('zz')
+        self.assertEqual(self.names(page), [])
+        expect(page.locator('#filter-empty')).to_have_text('No chats match “zz”.')
+        search.fill('+998 90')
+        expect(page.locator('#filter-empty')).to_contain_text('press Search')
+        search.press('Escape')
+        expect(search).to_have_value('')
+        self.assertEqual(self.names(page), ['Bobur', 'Alisher', 'Ali Valiyev'])
+        expect(page.locator('#filter-empty')).to_be_hidden()
+
+    def test_the_open_chat_is_marked_current(self):
+        page = self.open_app()
+        page.get_by_role('button', name='Alisher').click()
+        expect(page.get_by_role('button', name='Alisher')).to_have_attribute('aria-current', 'true')
+        expect(page.locator('#chat-list [aria-current]')).to_have_count(1)
+
+    def test_a_focused_row_keeps_focus_when_the_list_is_redrawn(self):
+        # The list used to be rebuilt from scratch on every update, so the keyboard lost its place.
+        page = self.open_app()
+        page.get_by_role('button', name='Alisher').focus()
+        page.evaluate('loadChats()')
+        expect(page.get_by_role('button', name='Alisher')).to_be_focused()
+        self.deliver_to_the_oldest_row(page)   # another row moves past it
+        expect(page.get_by_role('button', name='Alisher')).to_be_focused()
