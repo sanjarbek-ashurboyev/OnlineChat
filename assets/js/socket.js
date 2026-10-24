@@ -1,8 +1,8 @@
 import { $, PING_MS, PONG_GRACE_MS, state } from './state.js';
 import { refreshAccess } from './tokens.js';
 import { loadChats, renderChats } from './chats.js';
-import { appendMessage, catchUp, scrollToBottom } from './messages.js';
-import { clearComposerIf, isOurSend, settleSend } from './composer.js';
+import { appendMessage, catchUp, noteUnseen, scrollToBottom, setStatus, settleOutbox } from './messages.js';
+import { clearComposerIf, failSend, isOurSend, settleSend } from './composer.js';
 import { signOut } from './session.js';
 
 /* ── websocket ──────────────────────────── */
@@ -64,11 +64,10 @@ export function sendRead(chatId) {
   socketSend({ action: 'read', chat_id: chatId, up_to: Math.max(...state.seenIds) });
 }
 
-/** The other person has read our messages up to this id: show ✓✓ on those. */
+/** The other person has read our messages up to this id: two ticks on those. */
 export function showReadUpTo(upTo) {
-  document.querySelectorAll('#message-rows .row.out').forEach((row) => {
-    const meta = row.querySelector('.meta');
-    if (Number(row.dataset.id) <= upTo && meta.textContent.endsWith(' ✓')) meta.textContent += '✓';
+  document.querySelectorAll('#message-rows .row.out[data-status="sent"]').forEach((row) => {
+    if (Number(row.dataset.id) <= upTo) setStatus(row, 'read');
   });
 }
 
@@ -119,7 +118,7 @@ export function connectInbox() {
       // The last ping got no answer: the connection is dead even if the browser hasn't noticed.
       if (Date.now() - state.lastFrameAt > PING_MS + PONG_GRACE_MS) {
         closeSocket();
-        settleSend();
+        failSend();
         setConn('is-down');
         scheduleReconnect();
         return;
@@ -140,7 +139,10 @@ export function connectInbox() {
         const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
         appendMessage(data);
         if (atBottom) scrollToBottom();
+        else if (data.sender_id !== state.me.id) noteUnseen();
         if (data.sender_id !== state.me.id) sendRead(data.chat_id);
+      } else {
+        settleOutbox(data, data.chat_id);    // the open chat's is settled by appendMessage
       }
       if (isOurSend(data)) {
         clearComposerIf(data.text);
@@ -162,9 +164,10 @@ export function connectInbox() {
     }
 
     if (data.type === 'error') {
-      // Errors don't say which frame they answer, so any error fails a waiting send.
-      // Its text stays in the composer for a retry.
-      settleSend();
+      // Errors don't say which frame they answer, so any error fails a waiting send: its bubble says
+      // "Not delivered" and its text goes back to the composer. If it was saved after all, its echo or the
+      // next catch-up replaces the bubble.
+      failSend();
       $('send-error').textContent = data.detail;
       $('send-error').hidden = false;
     }
@@ -172,7 +175,7 @@ export function connectInbox() {
 
   ws.onclose = (event) => {
     clearInterval(state.pingTimer);
-    settleSend();                            // no answer coming; the text stays in the composer
+    failSend();                              // no answer coming; a catch-up replaces it if it was saved
     setConn('is-down');
     if (!state.me) return;                   // logged out on purpose
 

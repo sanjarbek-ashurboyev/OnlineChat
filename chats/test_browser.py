@@ -154,17 +154,23 @@ class SwitchingChatsTests(BrowserTestCase):
 
 class HistoryTests(BrowserTestCase):
     def test_load_older_keeps_messages_in_order(self):
-        # Codex #4. A page holds 50, so 53 messages make two pages.
+        # Codex #4. A page holds 50, so 53 messages make two pages. Since F-05 they load on scrolling up.
         texts = [f'm{n:02}' for n in range(1, 54)]
         self.say(self.chat, self.friend, *texts)
 
         page = self.open_app()
         page.get_by_role('button', name='User 2').click()
         expect(page.locator('#message-rows .row')).to_have_count(50)
-        page.get_by_role('button', name='Load older messages').click()
+        was_at = page.evaluate('''() => {
+            document.getElementById('messages').scrollTop = 0;
+            return document.querySelector('#message-rows .row').getBoundingClientRect().top;
+        }''')
         expect(page.locator('#message-rows .row')).to_have_count(53)
 
         self.assertEqual(self.rows(page), texts)
+        is_at = page.locator('#message-rows .row', has_text='m04').evaluate('row => row.getBoundingClientRect().top')
+        self.assertAlmostEqual(is_at, was_at, delta=1, msg='the message you were reading stays where it was')
+        expect(page.locator('#message-rows .day')).to_have_count(1)    # one "Today", not one per page
 
 
 class ChatListTests(BrowserTestCase):
@@ -330,6 +336,31 @@ class SessionLifecycleTests(BrowserTestCase):
 
         self.wait_until(page, lambda: Message.objects.filter(text='after logging back in').exists())
 
+    def test_a_failed_send_is_not_shown_to_the_next_account(self):
+        # Codex review of #55: failed sends now wait per chat. The other person in that chat has the same chat id,
+        # so signing out must forget them, or they'd see our message as theirs.
+        def swallow_sends(ws):
+            server = ws.connect_to_server()
+            ws.on_message(lambda frame: None if '"message"' in frame else server.send(frame))
+
+        def setup(page):
+            page.clock.install()
+            page.route_web_socket('**/ws/inbox/**', swallow_sends)
+
+        page = self.open_app(setup=setup)
+        page.get_by_role('button', name='User 2').click()
+        self.send(page, 'mine, not delivered')
+        page.wait_for_timeout(300)
+        page.clock.fast_forward(11_000)
+        expect(page.locator('#message-rows .row.is-outbox')).to_have_attribute('data-status', 'failed')
+
+        self.log_out(page)
+        self.log_in(page, self.friend)
+        page.get_by_role('button', name='User 1').click()
+        expect(page.locator('#peer-name')).to_have_text('User 1')
+        page.wait_for_timeout(300)
+        expect(page.locator('#message-rows .row.is-outbox')).to_have_count(0)
+
     def test_a_lost_echo_does_not_block_sending_and_the_saved_message_shows(self):
         def drop_echoes(ws):
             server = ws.connect_to_server()
@@ -347,6 +378,8 @@ class SessionLifecycleTests(BrowserTestCase):
 
         page.clock.fast_forward(11_000)
 
+        # Since F-05 the bubble is on screen from the start; the history check replaces it with the saved message.
+        expect(page.locator('#message-rows .row.is-outbox')).to_have_count(0)
         expect(page.locator('#message-rows')).to_contain_text('saved but no echo')
         expect(page.locator('#composer-input')).to_have_value('')
         self.send(page, 'the next one')
@@ -373,7 +406,8 @@ class SessionLifecycleTests(BrowserTestCase):
 
         page.clock.fast_forward(11_000)
         self.wait_until(page, lambda: held)          # the history check is under way
-        page.keyboard.press('Enter')                 # the text is still in the composer
+        page.locator('#composer-input').fill('only once')   # since F-05 the composer empties on sending:
+        page.keyboard.press('Enter')                          # type it again; it must still not go twice
         page.wait_for_timeout(500)
         held[0].continue_()
 
@@ -527,8 +561,9 @@ class ReadReceiptTests(BrowserTestCase):
     """Codex audit M-06 and M-08: ticks follow what was really on screen, and survive missed events."""
 
     def ticks(self, page):
-        return page.locator('#message-rows .row.out .meta').evaluate_all(
-            'metas => metas.map(m => m.textContent.endsWith("✓✓") ? 2 : 1)')
+        # Ticks are icons since F-05; the row carries the status they draw.
+        return page.locator('#message-rows .row.out').evaluate_all(
+            'rows => rows.map(r => r.dataset.status === "read" ? 2 : 1)')
 
     def test_read_names_the_newest_message_on_screen(self):
         self.say(self.chat, self.friend, 'one', 'two')
@@ -565,7 +600,7 @@ class ReadReceiptTests(BrowserTestCase):
         sockets[0].send(json.dumps({'type': 'read', 'chat_id': self.chat.id, 'by': self.friend.id,
                                     'up_to': seen.id, 'count': 1}))
 
-        expect(page.locator('#message-rows .row.out .meta').first).to_contain_text('✓✓')
+        expect(page.locator('#message-rows .row.out').first).to_have_attribute('data-status', 'read')
         self.assertEqual(self.ticks(page), [2, 1])
 
     def test_ticks_missed_while_the_receipt_was_lost_are_repaired(self):
@@ -578,7 +613,7 @@ class ReadReceiptTests(BrowserTestCase):
         Message.objects.filter(text='mine').update(is_read=True)
         page.clock.fast_forward(46_000)   # the chat list poll
 
-        expect(page.locator('#message-rows .row.out .meta')).to_contain_text('✓✓')
+        expect(page.locator('#message-rows .row.out')).to_have_attribute('data-status', 'read')
 
 
 class OrderingTests(BrowserTestCase):
@@ -669,12 +704,10 @@ class OrderingTests(BrowserTestCase):
         page.get_by_role('button', name='User 2').click()
         expect(page.locator('#message-rows .row')).to_have_count(50)
         page.route(re.compile(r'/messages/\?(cursor=|page=[2-9])'), fail_once)
-        older = page.get_by_role('button', name='Load older messages')
 
-        older.click()
+        page.locator('#messages').evaluate('box => { box.scrollTop = 0; }')   # older pages load on scroll (F-05)
         self.wait_until(page, lambda: failed)
-        page.wait_for_timeout(300)
-        older.click()
+        page.get_by_role('button', name='Load older messages').click()       # shown only to retry a failure
 
         expect(page.locator('#message-rows .row')).to_have_count(100)
         self.assertEqual(self.rows(page)[0], 'm021')
@@ -1059,14 +1092,31 @@ class ChatRowTests(BrowserTestCase):
             self.say(chat, other, f'hi from {name}')
         self.bobur, self.bobur_chat = other, chat
 
+    def open(self, **context_options):
+        """open_app, then wait for both chat-list loads of a start (start() and the socket's first ready). A load
+        answering after a test's message would put the server's older order back (session 043)."""
+        loads = []
+
+        def setup(page):
+            page.on('requestfinished', lambda r: loads.append(r) if re.search(r'/api/v1/chats/$', r.url) else None)
+
+        page = self.open_app(setup=setup, **context_options)
+        self.wait_until(page, lambda: len(loads) >= 2)
+        return page
+
     def names(self, page):
         return page.locator('#chat-list li:visible .chat-name').all_text_contents()
+
+    def message_frame(self, chat, sender, text):
+        """A real message, saved first so a chat-list refresh agrees with it, as the socket would deliver it."""
+        message = Message.objects.create(chat=chat, sender=sender, text=text)
+        return {'type': 'message', 'id': message.id, 'chat_id': chat.id, 'sender_id': sender.id,
+                'text': text, 'created_at': message.created_at.isoformat()}
 
     def deliver_to_the_oldest_row(self, page):
         """A new message from the friend arrives over the socket. Returns where the friend's row was on screen just
         before, where it is just after (same frame), and its place in the list."""
-        frame = {'type': 'message', 'id': 10**6, 'chat_id': self.chat.id, 'sender_id': self.friend.id,
-                 'text': 'new', 'created_at': timezone.now().isoformat()}
+        frame = self.message_frame(self.chat, self.friend, 'new')
         return page.evaluate('''frame => {
             const row = [...document.querySelectorAll('#chat-list li')]
               .find((li) => li.querySelector('.chat-name').textContent === 'Ali Valiyev');
@@ -1079,7 +1129,7 @@ class ChatRowTests(BrowserTestCase):
         return page.evaluate("document.querySelector('#chat-list').getBoundingClientRect().top")
 
     def test_someone_without_a_photo_gets_their_initials(self):
-        page = self.open_app()
+        page = self.open()
         expect(page.locator('#chat-list li')).to_have_count(3)
         srcs = page.locator('#chat-list .avatar').evaluate_all('imgs => imgs.map(i => decodeURIComponent(i.src))')
         self.assertIn('>B</text>', srcs[0])
@@ -1089,7 +1139,7 @@ class ChatRowTests(BrowserTestCase):
         self.assertIn('>AV</text>', src)
 
     def test_a_chat_with_a_new_message_glides_to_the_top(self):
-        page = self.open_app()
+        page = self.open()
         self.assertEqual(self.names(page), ['Bobur', 'Alisher', 'Ali Valiyev'])
         moved = self.deliver_to_the_oldest_row(page)
         self.assertEqual(self.names(page), ['Ali Valiyev', 'Bobur', 'Alisher'])
@@ -1101,29 +1151,34 @@ class ChatRowTests(BrowserTestCase):
         }''', arg=self.first_row_top(page))
 
     def test_a_row_moving_again_mid_glide_starts_from_where_it_is(self):
-        page = self.open_app()
-        self.deliver_to_the_oldest_row(page)
-        page.wait_for_timeout(80)   # Bobur is now gliding down, part of the way
-        frame = {'type': 'message', 'id': 10**6 + 1, 'chat_id': self.bobur_chat.id, 'sender_id': self.bobur.id,
-                 'text': 'again', 'created_at': timezone.now().isoformat()}
-        moved = page.evaluate('''frame => {
-            const row = [...document.querySelectorAll('#chat-list li')]
+        page = self.open()
+        first = self.message_frame(self.chat, self.friend, 'new')
+        second = self.message_frame(self.bobur_chat, self.bobur, 'again')
+        # All in the page, frame by frame: a round trip to Python could miss the glide (no fixed waits either).
+        moved = page.evaluate('''async ([first, second]) => {
+            const bobur = [...document.querySelectorAll('#chat-list li')]
               .find((li) => li.querySelector('.chat-name').textContent === 'Bobur');
-            const before = row.getBoundingClientRect().top;
-            state.ws.onmessage({ data: JSON.stringify(frame) });
-            return { before, after: row.getBoundingClientRect().top };
-        }''', frame)
-        self.assertGreater(moved['before'], self.first_row_top(page) + 1, 'it was still on its way down')
+            const top = document.querySelector('#chat-list').getBoundingClientRect().top;
+            state.ws.onmessage({ data: JSON.stringify(first) });        // Bobur starts gliding down a row
+            for (let frame = 0; !(bobur.getBoundingClientRect().top > top + 1) && frame < 120; frame += 1) {
+              await new Promise(requestAnimationFrame);
+            }
+            const before = bobur.getBoundingClientRect().top;
+            const stillGliding = Boolean(bobur.style.transform);
+            state.ws.onmessage({ data: JSON.stringify(second) });       // and now moves to the top
+            return { top, before, stillGliding, after: bobur.getBoundingClientRect().top };
+        }''', [first, second])
+        self.assertTrue(moved['stillGliding'], 'it was still on its way down')
         self.assertAlmostEqual(moved['after'], moved['before'], delta=1, msg='no jump')
         self.assertEqual(self.names(page), ['Bobur', 'Ali Valiyev', 'Alisher'])
 
     def test_with_reduce_motion_the_row_is_at_the_top_at_once(self):
-        page = self.open_app(reduced_motion='reduce')
+        page = self.open(reduced_motion='reduce')
         moved = self.deliver_to_the_oldest_row(page)
         self.assertAlmostEqual(moved['after'], self.first_row_top(page), delta=1)
 
     def test_typing_filters_the_loaded_chats_by_name(self):
-        page = self.open_app()
+        page = self.open()
         search = page.get_by_placeholder('Search by name or phone')
         search.fill('ALI')
         self.assertEqual(self.names(page), ['Alisher', 'Ali Valiyev'])
@@ -1138,16 +1193,214 @@ class ChatRowTests(BrowserTestCase):
         expect(page.locator('#filter-empty')).to_be_hidden()
 
     def test_the_open_chat_is_marked_current(self):
-        page = self.open_app()
+        page = self.open()
         page.get_by_role('button', name='Alisher').click()
         expect(page.get_by_role('button', name='Alisher')).to_have_attribute('aria-current', 'true')
         expect(page.locator('#chat-list [aria-current]')).to_have_count(1)
 
     def test_a_focused_row_keeps_focus_when_the_list_is_redrawn(self):
         # The list used to be rebuilt from scratch on every update, so the keyboard lost its place.
-        page = self.open_app()
+        page = self.open()
         page.get_by_role('button', name='Alisher').focus()
         page.evaluate('loadChats()')
         expect(page.get_by_role('button', name='Alisher')).to_be_focused()
         self.deliver_to_the_oldest_row(page)   # another row moves past it
         expect(page.get_by_role('button', name='Alisher')).to_be_focused()
+
+
+class MessageViewTests(BrowserTestCase):
+    """F-05: date dividers, runs from one sender with a tail on the last, ticks as icons, the ↓ button, and a
+    message that wasn't delivered shown on its bubble with a way to send it again."""
+
+    def place(self, text, when):
+        Message.objects.filter(text=text).update(created_at=when)
+
+    def frame_for(self, message):
+        return {'type': 'message', 'id': message.id, 'chat_id': message.chat_id, 'sender_id': message.sender_id,
+                'text': message.text, 'created_at': message.created_at.isoformat(), 'is_read': False, 'read_at': None}
+
+    def children(self, page):
+        """What #message-rows shows, top to bottom: 'day:Today' for a divider, the text for a message."""
+        return page.locator('#message-rows').evaluate('''box => [...box.children].map((el) =>
+            el.classList.contains('day') ? 'day:' + el.textContent : el.querySelector('.bubble').firstChild.textContent)''')
+
+    def test_messages_are_split_by_day(self):
+        now = timezone.now()
+        self.say(self.chat, self.friend, 'long ago', 'yesterday', 'today')
+        self.place('long ago', now - timedelta(days=10))
+        self.place('yesterday', now - timedelta(days=1))
+        page = self.open_app()
+        page.get_by_role('button', name='User 2').click()
+        expect(page.locator('#message-rows .row')).to_have_count(3)
+
+        shown = self.children(page)
+        self.assertEqual(shown[2:], ['day:Yesterday', 'yesterday', 'day:Today', 'today'])
+        self.assertTrue(shown[0].startswith('day:') and (now - timedelta(days=10)).strftime('%B') in shown[0], shown[0])
+        self.assertEqual(shown[1], 'long ago')
+
+        later = Message.objects.create(chat=self.chat, sender=self.friend, text='later today')
+        page.evaluate('f => state.ws.onmessage({ data: JSON.stringify(f) })', self.frame_for(later))
+        expect(page.locator('#message-rows .row')).to_have_count(4)
+        expect(page.locator('#message-rows .day')).to_have_count(3)      # still one "Today"
+
+    def test_a_run_from_one_sender_is_grouped_and_its_last_bubble_has_the_tail(self):
+        self.say(self.chat, self.friend, 'a', 'b', 'c')
+        self.say(self.chat, self.me, 'd')
+        self.say(self.chat, self.friend, 'e')
+        self.place('e', timezone.now() + timedelta(minutes=10))     # a long pause starts a new run
+        page = self.open_app()
+        page.get_by_role('button', name='User 2').click()
+        expect(page.locator('#message-rows .row')).to_have_count(5)
+
+        runs = page.locator('#message-rows .row').evaluate_all('''rows => rows.map((r) =>
+            (r.classList.contains('group-start') ? '[' : '') + r.querySelector('.bubble').firstChild.textContent +
+            (r.classList.contains('group-end') ? ']' : ''))''')
+        self.assertEqual(runs, ['[a', 'b', 'c]', '[d]', '[e]'])
+
+    def test_ticks_are_icons_with_a_name(self):
+        self.say(self.chat, self.me, 'was read', 'not read yet')
+        Message.objects.filter(text='was read').update(is_read=True)
+        page = self.open_app()
+        page.get_by_role('button', name='User 2').click()
+        expect(page.locator('#message-rows').get_by_role('img', name='Read')).to_have_count(1)
+        expect(page.locator('#message-rows').get_by_role('img', name='Sent')).to_have_count(1)
+
+    def test_the_down_button_counts_new_messages_and_takes_you_down(self):
+        self.say(self.chat, self.friend, *[f'm{n:02}' for n in range(1, 41)])
+        page = self.open_app()
+        page.get_by_role('button', name='User 2').click()
+        expect(page.locator('#message-rows .row')).to_have_count(40)
+        down = page.get_by_role('button', name='Scroll to the newest message')
+        expect(down).to_be_hidden()
+
+        page.locator('#messages').evaluate('box => { box.scrollTop = box.scrollHeight / 3; }')
+        expect(down).to_be_visible()
+        newer = Message.objects.create(chat=self.chat, sender=self.friend, text='while you were reading')
+        page.evaluate('f => state.ws.onmessage({ data: JSON.stringify(f) })', self.frame_for(newer))
+        expect(down.locator('.badge')).to_have_text('1')
+
+        down.click()
+        page.wait_for_function('''() => {
+            const box = document.getElementById('messages');
+            return box.scrollHeight - box.scrollTop - box.clientHeight < 2;
+        }''')
+        expect(down).to_be_hidden()
+
+    def test_a_message_that_was_not_delivered_can_be_sent_again(self):
+        swallowing = [True]
+
+        def swallow_sends(ws):
+            server = ws.connect_to_server()
+            # While `swallowing`, our message frames vanish on the way; pings still get through.
+            ws.on_message(lambda frame: None if swallowing[0] and '"message"' in frame else server.send(frame))
+
+        def setup(page):
+            page.clock.install()
+            page.route_web_socket('**/ws/inbox/**', swallow_sends)
+
+        page = self.open_app(setup=setup)
+        page.get_by_role('button', name='User 2').click()
+        page.locator('#composer-input').fill('try again')
+        page.keyboard.press('Enter')
+
+        outbox = page.locator('#message-rows .row.is-outbox')
+        expect(outbox).to_have_attribute('data-status', 'sending')   # on screen at once, with a clock
+        expect(outbox.locator('.bubble')).to_contain_text('try again')
+        expect(page.locator('#composer-input')).to_have_value('')
+
+        page.wait_for_timeout(300)
+        page.clock.fast_forward(11_000)                               # no echo, and not in the history
+        expect(outbox).to_have_attribute('data-status', 'failed')
+        expect(outbox).to_contain_text('Not delivered')
+        expect(page.locator('#composer-input')).to_have_value('try again')   # back, to edit if you like
+
+        swallowing[0] = False
+        outbox.get_by_role('button', name='Send again').click()
+        self.wait_until(page, lambda: Message.objects.filter(text='try again').exists())
+        expect(outbox).to_have_count(0)
+        expect(page.locator('#message-rows .row')).to_have_count(1)
+        expect(page.locator('#composer-input')).to_have_value('')
+        self.assertEqual(Message.objects.filter(text='try again').count(), 1)
+
+    def test_a_send_that_fails_after_you_switch_chats_waits_there_to_be_sent_again(self):
+        # Codex review of #55: send in A, open B, the send fails, back to A: the message was gone, with nothing to retry.
+        third = make_user(3)
+        Chat.objects.get_or_create_chat(self.me, third)
+        swallowing = [True]
+
+        def swallow_sends(ws):
+            server = ws.connect_to_server()
+            ws.on_message(lambda frame: None if swallowing[0] and '"message"' in frame else server.send(frame))
+
+        def setup(page):
+            page.clock.install()
+            page.route_web_socket('**/ws/inbox/**', swallow_sends)
+
+        page = self.open_app(setup=setup)
+        page.get_by_role('button', name='User 2').click()
+        page.locator('#composer-input').fill('unsent original')
+        page.keyboard.press('Enter')
+        page.wait_for_function('state.sending !== null')
+        page.get_by_role('button', name='User 3').click()
+        expect(page.locator('#peer-name')).to_have_text('User 3')
+        page.wait_for_timeout(100)
+        page.clock.fast_forward(11_000)                     # no echo, and not in the history: it failed
+        page.wait_for_function('state.sending === null')
+        expect(page.locator('#message-rows .row.is-outbox')).to_have_count(0)   # not drawn in B...
+        expect(page.locator('#composer-input')).to_have_value('')               # ...nor put in B's composer
+
+        page.get_by_role('button', name='User 2').click()
+        expect(page.locator('#peer-name')).to_have_text('User 2')
+        outbox = page.locator('#message-rows .row.is-outbox')
+        expect(outbox).to_have_attribute('data-status', 'failed')
+        expect(outbox).to_contain_text('unsent original')
+        expect(outbox).to_contain_text('Not delivered')
+        self.assertFalse(Message.objects.filter(text='unsent original').exists())
+
+        swallowing[0] = False
+        outbox.get_by_role('button', name='Send again').click()
+        self.wait_until(page, lambda: Message.objects.filter(text='unsent original').exists())
+        expect(outbox).to_have_count(0)
+        expect(page.locator('#message-rows .row')).to_have_count(1)
+        self.assertEqual(Message.objects.filter(text='unsent original').count(), 1)
+
+    def test_a_confirmation_that_arrives_while_another_chat_is_open_clears_the_retry(self):
+        # Codex review of #55, round 2: A's echo came late, after its history check had failed and B was open. Its
+        # bubble stayed "Not delivered", so back in A (history still loading) "Send again" sent a second copy.
+        third = make_user(3)
+        Chat.objects.get_or_create_chat(self.me, third)
+        held_echoes, sockets = [], []
+
+        def hold_echoes(ws):
+            server = ws.connect_to_server()
+            sockets.append(ws)
+            ws.on_message(server.send)
+            server.on_message(lambda frame: held_echoes.append(frame) if is_message_frame(frame) else ws.send(frame))
+
+        def setup(page):
+            page.clock.install()
+            page.route_web_socket('**/ws/inbox/**', hold_echoes)
+
+        page = self.open_app(setup=setup)
+        page.get_by_role('button', name='User 2').click()
+        page.route(re.compile(r'/messages/\?after='), lambda route: route.fulfill(status=503, json={'detail': 'outage'}))
+        page.locator('#composer-input').fill('saved in A')
+        page.keyboard.press('Enter')
+        self.wait_until(page, lambda: held_echoes)              # saved; its echo is held back
+        page.get_by_role('button', name='User 3').click()
+        page.wait_for_timeout(100)
+        page.clock.fast_forward(11_000)                         # the check can't reach the server: "Not delivered"
+        page.wait_for_function('state.sending === null')
+
+        sockets[0].send(held_echoes.pop(0))                     # the confirmation arrives while B is open
+        page.wait_for_timeout(100)
+        held_history = []
+        page.route(re.compile(rf'/api/v1/chats/{self.chat.id}/messages/$'), lambda route: held_history.append(route))
+        page.get_by_role('button', name='User 2').click()
+        self.wait_until(page, lambda: held_history)
+        try:
+            expect(page.locator('#message-rows .row.is-outbox')).to_have_count(0)   # nothing left to send again
+        finally:
+            held_history[0].continue_()
+        expect(page.locator('#message-rows .row')).to_have_count(1)
+        self.assertEqual(Message.objects.filter(chat=self.chat, text='saved in A').count(), 1)

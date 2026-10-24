@@ -119,6 +119,35 @@ so the same person always has the same colour. White letters need 3:1 against th
 least 3.25:1 where the letters sit. We draw them as a small SVG in the `<img>`'s `src`, so every place that shows
 an avatar keeps working the same way. The name is escaped before it goes into the SVG: it is markup.
 
+## Optimistic sending: show it now, confirm it later (F-05)
+- **Definition:** draw the user's action as if it worked, mark it as "on its way", and correct the picture when the
+  server answers. Our message bubble appears at once with a clock; the server's echo replaces it with the real message
+  (one tick); a refusal or no answer turns it into "Not delivered" with a "!" that sends it again.
+- **Why:** waiting for the server before showing anything feels slow, even at 100 ms. Telegram, iMessage and WhatsApp
+  all do this.
+- **How (ours, `showSending` / `showNotDelivered` in `assets/js/messages.js`):** one bubble at a time, kept outside
+  the id-ordered rows (it has no id yet). Any real message from us with the same text, newer than the send, takes its
+  place, whichever way it arrives: the echo, the history check after a lost echo, or the catch-up after a reconnect.
+- **The honest part:** "Not delivered" after a dropped connection may be wrong (the server may have saved it). That's
+  why the real message always wins: if it turns up later, the failed bubble and the copy in the composer go away.
+
+## Keeping your place when content arrives above (F-05)
+Older messages go *above* what you are reading, which pushes it down. Measure the scroll height before, add the rows,
+then scroll down by exactly the difference:
+```js
+const before = box.scrollHeight;
+await loadHistory(...);                         // rows inserted at the top
+box.scrollTop += box.scrollHeight - before;     // the same message stays under your eyes
+```
+Browsers can do this on their own ("scroll anchoring", `overflow-anchor`), but not all of them do, and doing it twice
+jumps. We switch it off (`overflow-anchor: none`) and do it ourselves.
+
+## Derived decoration: work it out again after every change (F-05)
+Date dividers and runs of bubbles depend on the neighbours, and messages arrive in any order (history, live,
+catch-up, older pages). Instead of patching around each insert, `decorate()` walks all rows once after every change
+and makes dividers and `group-start` / `group-end` right, keeping dividers that are already right. One function, one
+truth, at the cost of a walk over a few hundred elements.
+
 ## Alternatives
 - **Icon fonts:** easy, but screen readers may read the glyphs and a failed font load shows boxes.
 - **Emoji as icons** (what we had): look different on every system and can't take our colours.
@@ -132,6 +161,7 @@ an avatar keeps working the same way. The name is escaped before it goes into th
 - Showing status only by colour (our connection dot still does; F-03 adds text).
 - Removing the focus outline without a replacement; keyboard users lose their place.
 - Rebuilding a list on every update (`list.textContent = ''`): nothing can glide, and focus is lost (F-04 fixed ours).
+- Showing a message as sent before the server said so, with no way back: a failed send must change the bubble.
 - FLIP measured with `getBoundingClientRect()` after a transform was already set: you measure the picture, not the
   layout. Use `offsetTop` for the layout and add the transform yourself.
 

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240" fill="none" stroke="#000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<!-- The chat wallpaper's tile: our own doodles, drawn for OnlineChat. Used as a mask, so app.css gives it each theme's colour. -->
+<path d="M24 22h28a7 7 0 0 1 7 7v15a7 7 0 0 1-7 7H38l-8 7v-7h-6a7 7 0 0 1-7-7V29a7 7 0 0 1 7-7z"/>
+<path d="M27 33h22M27 40h14"/>
+<path d="M130 58s-15-9-15-19a7.5 7.5 0 0 1 15-3 7.5 7.5 0 0 1 15 3c0 10-15 19-15 19z"/>
+<path d="M212.0 24.0 L214.9 32.0 L223.4 32.3 L216.8 37.5 L219.1 45.7 L212.0 41.0 L204.9 45.7 L207.2 37.5 L200.6 32.3 L209.1 32.0Z"/>
+<path d="M24 136l44-18-14 40-9-15z"/><path d="M45 143l23-25"/>
+<circle cx="132" cy="128" r="14"/><path d="M125 132a8 8 0 0 0 14 0"/><path d="M127 123v1M137 123v1"/>
+<path d="M206 142v-26l18-5v24"/><circle cx="201" cy="142" r="5"/><circle cx="219" cy="135" r="5"/>
+<path d="M30 222h34a10 10 0 0 0 0-20 14 14 0 0 0-27-3 9 9 0 0 0-7 23z"/>
+<path d="M130 192c2 10 5 13 15 15-10 2-13 5-15 15-2-10-5-13-15-15 10-2 13-5 15-15z"/>
+<path d="M220 196a15 15 0 1 0 8 24 12 12 0 1 1-8-24z"/>
+<circle cx="88" cy="18" r="2.5"/><circle cx="176" cy="84" r="2.5"/><circle cx="84" cy="96" r="3.5"/>
+<circle cx="186" cy="176" r="2.5"/><circle cx="82" cy="174" r="3.5"/><circle cx="16" cy="88" r="2.5"/>
+<path d="M92 236l6-6M170 18l6 6"/>
+</svg>

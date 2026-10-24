@@ -1,31 +1,107 @@
 import { $, state } from './state.js';
 import { avatarSrc } from './avatar.js';
-import { lastSeenText, timeOf } from './format.js';
+import { dayLabel, lastSeenText, timeOf } from './format.js';
 import { api } from './api.js';
 import { renderChats } from './chats.js';
 import { sendRead } from './socket.js';
-import { clearComposerIf } from './composer.js';
+import { clearComposerIf, sendText } from './composer.js';
 import { setView } from './nav.js';
 
 /* ── messages ───────────────────────────── */
 
-function messageRow(msg) {
-  const mine = msg.sender_id === state.me.id;
+const GROUP_GAP_MS = 5 * 60 * 1000;   // a pause this long starts a new run of bubbles from the same sender
+const NEAR_TOP_PX = 400;              // scrolled this close to the top: fetch the older page
+const SVG = 'http://www.w3.org/2000/svg';
+const STATUS_ICONS = {                // what our message's corner shows, and what a screen reader says
+  sending: ['i-clock', 'Sending'],
+  sent: ['i-check', 'Sent'],
+  read: ['i-check2', 'Read'],
+};
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const box = $('messages');
+
+/** A bubble. Its text is the first child (textContent, never innerHTML); the time and the ticks follow in .meta,
+ *  which floats into the last line when there is room for it. `at` is the time in ms. */
+function bubbleRow({ mine, text, at }) {
   const row = document.createElement('div');
   row.className = 'row ' + (mine ? 'out' : 'in');
-  row.dataset.id = msg.id;
-
+  row.dataset.at = at;                  // dividers and runs are worked out from it
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
-  bubble.textContent = msg.text;          // textContent, never innerHTML
-
+  bubble.textContent = text;
   const meta = document.createElement('span');
   meta.className = 'meta';
-  meta.textContent = timeOf(msg.created_at) + (mine ? (msg.is_read ? ' ✓✓' : ' ✓') : '');
+  const time = document.createElement('span');
+  time.textContent = timeOf(at);
+  meta.append(time);
   bubble.append(meta);
-
   row.append(bubble);
   return row;
+}
+
+/** Our message's state: 'sending' (a clock), 'sent' (one tick), 'read' (two) or 'failed' (no icon). */
+export function setStatus(row, status) {
+  row.dataset.status = status;
+  const meta = row.querySelector('.meta');
+  meta.querySelector('.tick')?.remove();
+  if (!STATUS_ICONS[status]) return;
+  const [symbol, label] = STATUS_ICONS[status];
+  const svg = document.createElementNS(SVG, 'svg');
+  svg.setAttribute('class', 'tick');
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', label);
+  const use = document.createElementNS(SVG, 'use');
+  use.setAttribute('href', `#${symbol}`);
+  svg.append(use);
+  meta.append(svg);
+}
+
+function messageRow(msg) {
+  const mine = msg.sender_id === state.me.id;
+  const row = bubbleRow({ mine, text: msg.text, at: Date.parse(msg.created_at) });
+  row.dataset.id = msg.id;
+  if (mine) setStatus(row, msg.is_read ? 'read' : 'sent');
+  return row;
+}
+
+/** Dividers and runs, worked out again after every change, whatever order the rows came in: a divider before the
+ *  first message of each day, and group-start / group-end on the first and last bubble of each run from one
+ *  sender (the last one gets the tail). Dividers already in the right place are kept. */
+function decorate() {
+  let prev = null;          // the message above
+  let divider = null;       // a divider met since `prev`, until we know whether it's still needed
+  for (let el = $('message-rows').firstElementChild; el;) {
+    const next = el.nextElementSibling;
+    if (el.classList.contains('day')) {
+      divider?.remove();    // two in a row: the first one's day has no messages left
+      divider = el;
+    } else {
+      const day = new Date(Number(el.dataset.at)).toDateString();
+      const newDay = !prev || new Date(Number(prev.dataset.at)).toDateString() !== day;
+      if (newDay) {
+        if (divider?.dataset.day !== day) {
+          divider?.remove();
+          divider = document.createElement('div');
+          divider.className = 'day';
+          divider.dataset.day = day;
+          divider.append(Object.assign(document.createElement('span'), { className: 'service' }));
+          el.before(divider);
+        }
+        divider.firstChild.textContent = dayLabel(Number(el.dataset.at));   // "Today" turns into "Yesterday"
+      } else {
+        divider?.remove();
+      }
+      divider = null;
+      const joined = !newDay && prev.classList.contains('out') === el.classList.contains('out')
+        && el.dataset.at - prev.dataset.at < GROUP_GAP_MS;
+      el.classList.toggle('group-start', !joined);
+      prev?.classList.toggle('group-end', !joined);
+      prev = el;
+    }
+    el = next;
+  }
+  divider?.remove();        // nothing after it
+  prev?.classList.add('group-end');
 }
 
 export function appendMessage(msg) {
@@ -34,17 +110,112 @@ export function appendMessage(msg) {
   const rows = $('message-rows');
   const row = messageRow(msg);
   // Rows stay in id order whatever order they arrive in: history, live, catch-up (Codex audit M-09).
-  // Search from the bottom, where new messages go.
+  // Search from the bottom, where new messages go, past dividers, our bubble on its way and newer messages.
   let above = rows.lastElementChild;
-  while (above && Number(above.dataset.id) > msg.id) above = above.previousElementSibling;
+  while (above && !(above.dataset.id && Number(above.dataset.id) < msg.id)) above = above.previousElementSibling;
   if (above) above.after(row);
   else rows.prepend(row);
+  settleOutbox(msg, state.activeId);
+  decorate();
 }
 
 export function scrollToBottom() {
-  const box = $('messages');
   box.scrollTop = box.scrollHeight;
 }
+
+/* ── our message on its way ─────────────── */
+
+/* Per chat: { sent, status, at, row } for our latest send there, until its real message arrives. Kept when you open
+   another chat, so a send that fails meanwhile waits in its own chat with "Send again" (Codex review of #55). */
+const outboxes = new Map();
+
+function drawOutbox(entry) {
+  entry.row = bubbleRow({ mine: true, text: entry.sent.text, at: entry.at });
+  entry.row.classList.add('is-outbox');
+  if (entry.status === 'failed') markNotDelivered(entry.row, entry.sent);
+  else setStatus(entry.row, 'sending');
+  $('message-rows').append(entry.row);
+  decorate();
+}
+
+/** Draw our message at once, with a clock. One per chat: it replaces a bubble there that wasn't delivered. */
+export function showSending(sent) {
+  outboxes.get(sent.chatId)?.row?.remove();
+  const entry = { sent, status: 'sending', at: Date.now(), row: null };
+  outboxes.set(sent.chatId, entry);
+  if (sent.chatId !== state.activeId) return;
+  drawOutbox(entry);
+  scrollToBottom();
+}
+
+/** No answer, or a refusal: say so on the bubble, with a button that sends it again. If its chat isn't open, it
+ *  says so when you open it. */
+export function showNotDelivered(sent) {
+  const entry = outboxes.get(sent.chatId);
+  if (entry?.sent !== sent) return;
+  entry.status = 'failed';
+  if (entry.row?.isConnected) markNotDelivered(entry.row, sent);
+}
+
+function markNotDelivered(row, sent) {
+  setStatus(row, 'failed');
+  const note = document.createElement('span');
+  note.className = 'not-delivered';
+  note.textContent = 'Not delivered';
+  row.querySelector('.meta').prepend(note);
+  const retry = document.createElement('button');
+  retry.type = 'button';
+  retry.className = 'retry';
+  retry.title = 'Send again';
+  retry.setAttribute('aria-label', 'Send again');
+  retry.textContent = '!';
+  retry.addEventListener('click', () => { if (sendText(sent.text)) clearComposerIf(sent.text); });
+  row.prepend(retry);
+}
+
+/** A real message of ours in `chatId` takes the place of the send waiting there (and of the copy put back in the
+ *  composer). Also for a chat that isn't open: a confirmation that arrives while you're elsewhere must not leave
+ *  "Send again" behind (Codex review of #55, round 2). Matched like the history check: ours, same text, newer. */
+export function settleOutbox(msg, chatId) {
+  const entry = outboxes.get(chatId);
+  if (!entry || msg.sender_id !== state.me.id || msg.text !== entry.sent.text || msg.id <= entry.sent.after) return;
+  entry.row?.remove();
+  outboxes.delete(chatId);
+  if (chatId === state.activeId) clearComposerIf(msg.text);
+}
+
+/** Signing out: the next account must never see these. */
+export function forgetOutboxes() {
+  outboxes.clear();
+}
+
+/* ── the ↓ button ───────────────────────── */
+
+let unseen = 0;   // messages that arrived below while you were reading further up
+
+function updateDown() {
+  const fromBottom = box.scrollHeight - box.scrollTop - box.clientHeight;
+  if (fromBottom < 60) unseen = 0;
+  $('to-bottom').classList.toggle('is-shown', fromBottom > 200);
+  const badge = $('to-bottom').querySelector('.badge');
+  badge.textContent = unseen;
+  badge.hidden = !unseen;
+}
+
+/** A message from the other person arrived while you weren't at the bottom. */
+export function noteUnseen() {
+  unseen += 1;
+  updateDown();
+}
+
+$('to-bottom').addEventListener('click', () => {
+  box.scrollTo({ top: box.scrollHeight, behavior: reducedMotion.matches ? 'auto' : 'smooth' });
+});
+
+box.addEventListener('scroll', () => {
+  updateDown();
+  if (box.scrollTop < NEAR_TOP_PX) loadOlder();
+}, { passive: true });
 
 /** `query` is '' for the newest page, or the cursor query for an older one.
  *  Returns null when the user opened another chat (or left) while this was loading. */
@@ -58,7 +229,6 @@ async function loadHistory(chatId, query = '') {
   if (!query) state.syncedUpTo = Math.max(0, ...data.results.map((m) => m.id));
   // A cursor link points before the oldest message loaded, so new messages can't shift it (M-11).
   state.olderQuery = data.next ? new URL(data.next).search : null;
-  $('load-older').hidden = !state.olderQuery;
   return data;
 }
 
@@ -78,7 +248,8 @@ export async function catchUp(chatId) {
   }
 }
 
-/** No echo in time (Codex audit H-06). The echo may be what got lost, so look in the history. */
+/** No echo in time (Codex audit H-06). The echo may be what got lost, so look in the history. Says whether
+ *  the message was there. */
 export async function reconcileSend(sent) {
   let saved = false;
   try {
@@ -90,32 +261,38 @@ export async function reconcileSend(sent) {
   if (saved) {
     clearComposerIf(sent.text);
     if (sent.chatId === state.activeId) catchUp(sent.chatId);   // draw it
-    return;
+    return true;
   }
   $('send-error').textContent = "The server didn't answer. Your message may not have been sent.";
   $('send-error').hidden = false;
+  return false;
 }
 
-$('load-older').addEventListener('click', async () => {
+/** Fetch the next older page; scrolling near the top calls it. If it fails, the "Load older messages" button
+ *  appears to ask again. */
+async function loadOlder() {
   // One request at a time, and the cursor moves only when a page arrives (Codex audit M-10).
   if (state.loadingOlder || !state.olderQuery) return;
   const opened = state.opened;
-  const box = $('messages');
-  const before = box.scrollHeight;
   state.loadingOlder = true;
+  $('load-older').hidden = true;
   $('load-older').disabled = true;
+  const before = box.scrollHeight;
   try {
     if (!await loadHistory(state.activeId, state.olderQuery)) return;
-    box.scrollTop = box.scrollHeight - before;   // keep the reading position
+    box.scrollTop += box.scrollHeight - before;   // what you were reading stays where it was
   } catch {
-    // The cursor didn't move: the next click asks for the same page.
+    // The cursor didn't move: the button (or scrolling up again) asks for the same page.
+    if (opened === state.opened) $('load-older').hidden = false;
   } finally {
     if (opened === state.opened) {
       state.loadingOlder = false;
       $('load-older').disabled = false;
     }
   }
-});
+}
+
+$('load-older').addEventListener('click', loadOlder);
 
 /* ── open a chat ────────────────────────── */
 
@@ -128,6 +305,7 @@ export async function openChat(chatId) {
   state.olderQuery = null;
   state.loadingOlder = false;
   $('load-older').disabled = false;
+  $('load-older').hidden = true;
   state.syncedUpTo = null;
   state.catchUpDue = false;
   state.seenIds.clear();
@@ -136,6 +314,9 @@ export async function openChat(chatId) {
   $('pane-empty').hidden = true;
   $('pane-chat').hidden = false;
   $('message-rows').textContent = '';
+  if (outboxes.has(chatId)) drawOutbox(outboxes.get(chatId));   // sending, or waiting to be sent again
+  unseen = 0;
+  updateDown();
   $('send-error').hidden = true;
   showPeer(chat.participant);
   renderChats();

@@ -8,14 +8,17 @@
   /* Surfaces */
   --color-bg: #ffffff;                       /* sidebar, header, composer */
   --color-bg-secondary: #f1f1f4;             /* fields, pressed and hovered rows */
-  --color-chat-bg: #dfe6cf;                  /* behind the messages; the wallpaper comes in F-05 */
+  --color-chat-bg-top: #e6edd3;              /* the wallpaper: a soft gradient... */
+  --color-chat-bg-bottom: #cddcb4;
+  --color-wallpaper-pattern: rgba(79, 107, 60, .16);   /* ...under our doodles (assets/wallpaper.svg) */
+  --color-service-bg: rgba(52, 77, 43, .78);  /* pills on the wallpaper: dates, "Pick a conversation" */
+  --color-service-text: #ffffff;             /* ≥ 5.41 over any part of the light wallpaper */
   --color-separator: rgba(60, 60, 67, .14);
   --color-scrim: rgba(0, 0, 0, .4);          /* dims the page behind a dialog */
 
   /* Text */
   --color-text: #0b0b0d;
   --color-text-secondary: #676c71;           /* 5.30 on --color-bg, 4.70 on --color-bg-secondary */
-  --color-on-chat-bg: #5f6368;               /* 4.71 on --color-chat-bg */
 
   /* Accent: links, focus, badges, filled buttons */
   --color-accent: #1f74c7;                   /* as text on --color-bg: 4.79 */
@@ -29,6 +32,7 @@
   --color-bubble-out: #e3fbd0;
   --color-bubble-out-text: #0b0b0d;          /* 17.8 */
   --color-bubble-out-meta: #2e7d32;          /* time and ticks: 4.63 */
+  --color-bubble-out-danger: #c62828;        /* "Not delivered": 5.08 */
 
   /* Materials: frosted glass over the messages (header, composer) */
   --color-material: rgba(255, 255, 255, .72);
@@ -37,6 +41,7 @@
   /* Status */
   --color-online: #34c759;                   /* a dot; "online" is also written out */
   --color-danger: #d32f2f;                   /* 4.98 on --color-bg */
+  --color-danger-fill: #c62828;              /* behind a white "!": 5.62 */
 
   /* Type: the system font (San Francisco on Apple devices). Sizes in rem follow the user's text size. */
   --font-sans: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -73,12 +78,15 @@
   :root {
     --color-bg: #1c1c1e;
     --color-bg-secondary: #2c2c2e;
-    --color-chat-bg: #111813;
+    --color-chat-bg-top: #0e1611;
+    --color-chat-bg-bottom: #17231b;
+    --color-wallpaper-pattern: rgba(200, 230, 201, .06);
+    --color-service-bg: rgba(47, 61, 51, .9);
+    --color-service-text: #f5f5f7;           /* ≥ 10.66 */
     --color-separator: rgba(84, 84, 88, .6);
     --color-scrim: rgba(0, 0, 0, .6);
     --color-text: #f5f5f7;
     --color-text-secondary: #98989f;         /* 5.94 on --color-bg */
-    --color-on-chat-bg: #98989f;
     --color-accent: #5eaaf0;                 /* 6.87 */
     --color-accent-fill: #2a72c2;            /* white on it: 4.90 */
     --color-bubble-in: #2c2c2e;
@@ -86,18 +94,19 @@
     --color-bubble-out: #2b5235;
     --color-bubble-out-text: #f5f5f7;        /* 8.17 */
     --color-bubble-out-meta: #a8d8ab;        /* 5.54 */
+    --color-bubble-out-danger: #ffa8a0;      /* 4.81 */
     --color-material: rgba(28, 28, 30, .72);
     --color-online: #30d158;
     --color-danger: #ff6b6b;                 /* 6.13 */
   }
 }
 
-/* Increased contrast: stronger secondary text and solid separators. */
+/* Increased contrast: stronger secondary text and solid separators; the wallpaper loses its pattern. */
 @media (prefers-contrast: more) {
   :root {
+    --color-wallpaper-pattern: transparent;
     --color-separator: #8e8e93;
     --color-text-secondary: #4b5055;
-    --color-on-chat-bg: #3c4043;
     --color-bubble-in-meta: #4b5055;
     --color-bubble-out-meta: #1b5e20;
   }
@@ -105,7 +114,6 @@
 @media (prefers-contrast: more) and (prefers-color-scheme: dark) {
   :root {
     --color-text-secondary: #c7c7cc;
-    --color-on-chat-bg: #c7c7cc;
     --color-bubble-in-meta: #c7c7cc;
     --color-bubble-out-meta: #c8e6c9;
   }
@@ -457,14 +465,39 @@ button:focus-visible {
 
 /* ── Message pane ───────────────────────── */
 .pane {
+  position: relative;
+  isolation: isolate;                      /* the wallpaper's pattern (z-index -1) stays inside the pane */
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  background: var(--color-chat-bg);
+  background: linear-gradient(170deg, var(--color-chat-bg-top), var(--color-chat-bg-bottom));
   touch-action: pan-y pinch-zoom;          /* sideways drags are ours: swipe back (F-03) */
 }
-.pane-empty { margin: auto; color: var(--color-on-chat-bg); }
+/* The wallpaper: our doodles as a mask, so each theme paints them in its own colour. It doesn't scroll. */
+.pane::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--color-wallpaper-pattern);
+  -webkit-mask: url(wallpaper.svg) 0 0 / 240px 240px repeat;
+  mask: url(wallpaper.svg) 0 0 / 240px 240px repeat;
+  pointer-events: none;
+}
+.pane-empty { margin: auto; }
+
+/* A pill on the wallpaper: readable whatever the pattern behind it. */
+.service {
+  display: inline-block;
+  padding: .2rem .65rem;
+  border-radius: var(--radius-full);
+  background: var(--color-service-bg);
+  color: var(--color-service-text);
+  font-size: var(--text-footnote);
+  font-weight: 500;
+}
+.day { display: flex; justify-content: center; margin: var(--space-3) 0 var(--space-2); }
 #pane-chat { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 
 /* One scrolling area from top to bottom. Header and composer stick to its edges, so messages pass under them. */
@@ -477,6 +510,7 @@ button:focus-visible {
   display: flex;
   flex-direction: column;
   scroll-padding-block: 4.5rem 5rem;       /* what scrolls into view isn't left under the glass */
+  overflow-anchor: none;                   /* loading older messages keeps your place itself (messages.js) */
 }
 
 .pane-head {
@@ -512,40 +546,131 @@ button:focus-visible {
   margin-top: var(--space-3);
 }
 
-.row { display: flex; margin-bottom: var(--space-2); }
+.row { display: flex; align-items: flex-end; margin-bottom: 2px; }
+.row.group-end { margin-bottom: var(--space-2); }    /* runs from one sender sit close together */
 .row.out { justify-content: flex-end; }
 
+/* Corners: round, except where bubbles of one run meet on the sender's side, and under the tail. */
 .bubble {
+  --r: var(--radius-lg);
+  --r-joined: .375rem;
+  position: relative;
+  display: flow-root;                      /* holds the floating time */
   max-width: min(72%, 560px);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-lg);
+  padding: .375rem .625rem .375rem .75rem;
+  border-radius: var(--r);
   background: var(--color-bubble-in);
   color: var(--color-bubble-in-text);
-  box-shadow: 0 1px 1px rgba(0, 0, 0, .08);
-  word-wrap: break-word;
+  filter: drop-shadow(0 1px .5px rgba(0, 0, 0, .12));   /* a shadow that follows the tail too */
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+.row.in .bubble { border-top-left-radius: var(--r-joined); border-bottom-left-radius: var(--r-joined); }
+.row.out .bubble { border-top-right-radius: var(--r-joined); border-bottom-right-radius: var(--r-joined); }
+.row.in.group-start .bubble { border-top-left-radius: var(--r); }
+.row.out.group-start .bubble { border-top-right-radius: var(--r); }
+.row.in.group-end .bubble { border-bottom-left-radius: 0; }
+.row.out.group-end .bubble { border-bottom-right-radius: 0; }
 .row.out .bubble {
   background: var(--color-bubble-out);
   color: var(--color-bubble-out-text);
 }
 
+/* The tail: on the last bubble of a run, in the bubble's own colour. Drawn for the left; mirrored for ours. */
+.row.group-end .bubble::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: 9px;
+  height: 16px;
+  background: inherit;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 16'%3E%3Cpath d='M9 0v16H0c4 0 8-3 8-11z'/%3E%3C/svg%3E");
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 16'%3E%3Cpath d='M9 0v16H0c4 0 8-3 8-11z'/%3E%3C/svg%3E");
+}
+.row.in.group-end .bubble::before { left: -8px; }
+.row.out.group-end .bubble::before { right: -8px; transform: scaleX(-1); }
+
+/* Time and ticks float into the last line when there is room, as in Telegram; otherwise onto a line of their own. */
 .meta {
-  display: block;
+  float: right;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin: .45rem -.125rem -.125rem .625rem;
   font-size: var(--text-caption);
+  line-height: 1;
   letter-spacing: var(--tracking-loose);
+  font-variant-numeric: tabular-nums;
   color: var(--color-bubble-in-meta);
-  margin-top: 2px;
-  text-align: right;
+  white-space: nowrap;
 }
 .row.out .meta { color: var(--color-bubble-out-meta); }
+.tick {
+  width: 16px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Our message that wasn't delivered: a red "!" beside it sends it again. */
+.not-delivered { color: var(--color-bubble-out-danger); font-weight: 600; margin-right: var(--space-1); }
+.retry {
+  flex: 0 0 auto;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin: 0 var(--space-3) var(--space-1) 0;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-danger-fill);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: var(--text-footnote);
+  line-height: 1;
+}
 
 .composer-bar {
   position: sticky;
   bottom: 0;
   z-index: 1;
   box-shadow: 0 -1px 0 var(--color-separator);
+}
+
+/* ↓ floats over the messages, just above the composer; it grows in when you have scrolled up. */
+.to-bottom {
+  position: absolute;
+  right: var(--space-3);
+  bottom: calc(100% + var(--space-3));
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .18);
+  transition: opacity var(--duration-state) var(--ease-out), transform var(--duration-state) var(--ease-out),
+              visibility 0s;
+}
+.to-bottom:not(.is-shown) {
+  opacity: 0;
+  transform: scale(.6);
+  visibility: hidden;                      /* not clickable or focusable while gone */
+  transition-delay: 0s, 0s, var(--duration-state);
+}
+.to-bottom:active { transform: scale(.92); transition-duration: var(--duration-press); }
+.to-bottom .badge {
+  position: absolute;
+  grid-area: auto;                         /* not the chat row's grid cell: centred over the button */
+  top: -.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
 }
 .composer {
   display: flex;
@@ -664,6 +789,7 @@ dialog.drawer::backdrop { background: transparent; }
     transform: none;
     opacity: .7;
   }
+  .to-bottom:not(.is-shown), .to-bottom:active { transform: none; }
 }
 
 /* ── Narrow screens ─────────────────────── */
