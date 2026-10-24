@@ -1363,3 +1363,44 @@ class MessageViewTests(BrowserTestCase):
         expect(outbox).to_have_count(0)
         expect(page.locator('#message-rows .row')).to_have_count(1)
         self.assertEqual(Message.objects.filter(text='unsent original').count(), 1)
+
+    def test_a_confirmation_that_arrives_while_another_chat_is_open_clears_the_retry(self):
+        # Codex review of #55, round 2: A's echo came late, after its history check had failed and B was open. Its
+        # bubble stayed "Not delivered", so back in A (history still loading) "Send again" sent a second copy.
+        third = make_user(3)
+        Chat.objects.get_or_create_chat(self.me, third)
+        held_echoes, sockets = [], []
+
+        def hold_echoes(ws):
+            server = ws.connect_to_server()
+            sockets.append(ws)
+            ws.on_message(server.send)
+            server.on_message(lambda frame: held_echoes.append(frame) if is_message_frame(frame) else ws.send(frame))
+
+        def setup(page):
+            page.clock.install()
+            page.route_web_socket('**/ws/inbox/**', hold_echoes)
+
+        page = self.open_app(setup=setup)
+        page.get_by_role('button', name='User 2').click()
+        page.route(re.compile(r'/messages/\?after='), lambda route: route.fulfill(status=503, json={'detail': 'outage'}))
+        page.locator('#composer-input').fill('saved in A')
+        page.keyboard.press('Enter')
+        self.wait_until(page, lambda: held_echoes)              # saved; its echo is held back
+        page.get_by_role('button', name='User 3').click()
+        page.wait_for_timeout(100)
+        page.clock.fast_forward(11_000)                         # the check can't reach the server: "Not delivered"
+        page.wait_for_function('state.sending === null')
+
+        sockets[0].send(held_echoes.pop(0))                     # the confirmation arrives while B is open
+        page.wait_for_timeout(100)
+        held_history = []
+        page.route(re.compile(rf'/api/v1/chats/{self.chat.id}/messages/$'), lambda route: held_history.append(route))
+        page.get_by_role('button', name='User 2').click()
+        self.wait_until(page, lambda: held_history)
+        try:
+            expect(page.locator('#message-rows .row.is-outbox')).to_have_count(0)   # nothing left to send again
+        finally:
+            held_history[0].continue_()
+        expect(page.locator('#message-rows .row')).to_have_count(1)
+        self.assertEqual(Message.objects.filter(chat=self.chat, text='saved in A').count(), 1)

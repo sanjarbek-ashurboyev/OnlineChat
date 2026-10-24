@@ -91,6 +91,39 @@
 - **Lesson:** state that belongs to one chat (a pending send, later a draft) must be kept per chat; "the open chat"
   is only where it's drawn. P-49.
 
+## Follow-up: Codex review of #55, round 2 (BLOCK, one Medium; the last round)
+- **Codex confirmed the round-1 fix** and found a hole next to it: the confirmation of a send could still leave the
+  chat's entry behind. Send in A, the echo is late, open B, the 10 s check can't reach the server (A's entry is now
+  `failed`), then the echo arrives while B is open. Back in A, "Not delivered" with "Send again" was drawn again;
+  pressing it saves the message a second time.
+- **Reproduced:** `test_a_confirmation_that_arrives_while_another_chat_is_open_clears_the_retry`
+  (`MessageViewTests`). It holds the echo, answers the history check with 503, opens B, fast-forwards the clock
+  11 s, lets the echo through, then opens A with its history held back (so only the outbox could draw a bubble).
+  **On `69c7c40` it fails:** `Locator expected to have count '0'`, `Actual value: 1` (the stale outbox row).
+  With the fix it passes.
+- **Root cause (Confirmed by that test):** only `appendMessage` removed an entry, and it is called only for the
+  **open** chat; it also looked up `outboxes.get(state.activeId)`. An echo for a chat that isn't open updated the
+  sidebar and nothing else, so A's `failed` entry outlived its own confirmation.
+- **Fix:** the matching moved into `settleOutbox(msg, chatId)` in `assets/js/messages.js`:
+  ```js
+  export function settleOutbox(msg, chatId) {
+    const entry = outboxes.get(chatId);
+    if (!entry || msg.sender_id !== state.me.id || msg.text !== entry.sent.text || msg.id <= entry.sent.after) return;
+    entry.row?.remove();
+    outboxes.delete(chatId);
+    if (chatId === state.activeId) clearComposerIf(msg.text);
+  }
+  ```
+  `appendMessage` calls it for the open chat, as before. The socket's message handler (`assets/js/socket.js`) now
+  calls `settleOutbox(data, data.chat_id)` when the message belongs to a chat that isn't open. The composer is only
+  touched for the open chat: B's composer holds B's text, never A's.
+- **Results:** `make test` **177 run, OK (skipped=23)** (243 found); real Postgres + Redis with
+  `REQUIRE_BROWSER_TESTS=True` **243 run, OK**; `chats.test_browser` alone 63 run, OK; Ruff and ESLint
+  (`no-undef`, `no-unused-vars`) clean.
+- **Not done:** no round 3 (our rule: two Codex rounds per PR).
+- **Lesson:** keeping state per chat (round 1) is half the job; every event that ends that state must reach it,
+  whichever chat is open. P-50.
+
 ## Concepts
 
 ### Optimistic UI
@@ -177,6 +210,7 @@ box.scrollTop += box.scrollHeight - before;
 4. Why is the wallpaper a mask and not a background image with colours in it?
 5. Why did the F-04 test fail only sometimes, and why was the app right?
 6. Why does the test helper save the message to the database before sending the fake frame?
+7. (Round 2) Why must an echo for a chat that isn't open still remove that chat's entry from `outboxes`?
 
 <details><summary>Answer key</summary>
 
@@ -193,6 +227,8 @@ box.scrollTop += box.scrollHeight - before;
    trust the server: the message really didn't exist there.
 6. So that any chat-list load that happens later agrees with what the test showed the page, as it would with a real
    message.
+7. Otherwise the entry stays `failed` after the message was saved. When you open that chat again its bubble is drawn
+   with "Send again" (before the history arrives to remove it), and pressing it saves a duplicate.
 </details>
 
 ## Next steps

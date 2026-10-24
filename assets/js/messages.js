@@ -115,13 +115,7 @@ export function appendMessage(msg) {
   while (above && !(above.dataset.id && Number(above.dataset.id) < msg.id)) above = above.previousElementSibling;
   if (above) above.after(row);
   else rows.prepend(row);
-  // The real message takes the place of its bubble, and of the copy put back in the composer.
-  const entry = outboxes.get(state.activeId);
-  if (entry && msg.sender_id === state.me.id && msg.text === entry.sent.text && msg.id > entry.sent.after) {
-    entry.row?.remove();
-    outboxes.delete(state.activeId);
-    clearComposerIf(msg.text);
-  }
+  settleOutbox(msg, state.activeId);
   decorate();
 }
 
@@ -177,6 +171,17 @@ function markNotDelivered(row, sent) {
   retry.textContent = '!';
   retry.addEventListener('click', () => { if (sendText(sent.text)) clearComposerIf(sent.text); });
   row.prepend(retry);
+}
+
+/** A real message of ours in `chatId` takes the place of the send waiting there (and of the copy put back in the
+ *  composer). Also for a chat that isn't open: a confirmation that arrives while you're elsewhere must not leave
+ *  "Send again" behind (Codex review of #55, round 2). Matched like the history check: ours, same text, newer. */
+export function settleOutbox(msg, chatId) {
+  const entry = outboxes.get(chatId);
+  if (!entry || msg.sender_id !== state.me.id || msg.text !== entry.sent.text || msg.id <= entry.sent.after) return;
+  entry.row?.remove();
+  outboxes.delete(chatId);
+  if (chatId === state.activeId) clearComposerIf(msg.text);
 }
 
 /** Signing out: the next account must never see these. */

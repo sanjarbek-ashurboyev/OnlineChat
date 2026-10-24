@@ -1,7 +1,7 @@
 import { $, PING_MS, PONG_GRACE_MS, state } from './state.js';
 import { refreshAccess } from './tokens.js';
 import { loadChats, renderChats } from './chats.js';
-import { appendMessage, catchUp, noteUnseen, scrollToBottom, setStatus } from './messages.js';
+import { appendMessage, catchUp, noteUnseen, scrollToBottom, setStatus, settleOutbox } from './messages.js';
 import { clearComposerIf, failSend, isOurSend, settleSend } from './composer.js';
 import { signOut } from './session.js';
 
@@ -141,6 +141,8 @@ export function connectInbox() {
         if (atBottom) scrollToBottom();
         else if (data.sender_id !== state.me.id) noteUnseen();
         if (data.sender_id !== state.me.id) sendRead(data.chat_id);
+      } else {
+        settleOutbox(data, data.chat_id);    // the open chat's is settled by appendMessage
       }
       if (isOurSend(data)) {
         clearComposerIf(data.text);

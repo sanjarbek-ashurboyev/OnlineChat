@@ -792,3 +792,18 @@ it was fixed. Labels: **Confirmed** = root cause proven; **Hypothesis** = likely
   it opens; forget them all on sign-out, because the other person in a chat shares its id.
 - **Lesson:** per-conversation state belongs in a map keyed by conversation, not in "the current one". And when you
   key by an id that two accounts share, clear it when the account changes.
+
+## P-50 · A confirmation that arrived in another chat left "Send again" behind
+
+- **Session:** [043](sessions/043-f05-messages.md#follow-up-codex-review-of-55-round-2-block-one-medium-the-last-round) (Codex review of #55, round 2)
+- **Observed:** send in chat A, the echo is late, open chat B, the 10 s check can't reach the server, so A's send is
+  marked "Not delivered". Then the echo arrives while B is open. Back in A, the bubble still offered "Send again", and
+  pressing it saved the message twice.
+- **Root cause (Confirmed: the reproducing test fails on `69c7c40` with the stale bubble still drawn, and passes after
+  the fix):** only `appendMessage` removed a chat's entry from `outboxes`, and it runs only for the open chat. An echo
+  for another chat updated the sidebar and left that chat's `failed` entry in place.
+- **Fix:** `settleOutbox(msg, chatId)` in `assets/js/messages.js` removes the entry for the message's own chat;
+  `appendMessage` calls it for the open chat, and the socket handler calls it for messages to any other chat. It
+  touches the composer only when that chat is open.
+- **Lesson:** when state is kept per chat, every event that ends it (a confirmation, a failure, a sign-out) must reach
+  the entry of *its* chat, not only the open one.
