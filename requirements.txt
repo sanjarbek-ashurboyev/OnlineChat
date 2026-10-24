@@ -88,7 +88,7 @@ phonenumberslite==9.0.39
     # via django-phonenumber-field
 pillow==12.3.0
     # via -r requirements.in
-playwright==1.63.0
+playwright==1.64.0
     # via -r requirements.in
 psycopg==3.3.6
     # via -r requirements.in
