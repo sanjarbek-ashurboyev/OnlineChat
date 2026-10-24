@@ -92,9 +92,23 @@ Each is a task with tests written first: typing indicator (a socket action with 
 like T-04) · reply (later with swipe-to-reply) · edit · delete for me / for everyone · search in messages ·
 pin, mute and archive.
 
+Added 2026-10-24 (gaps against Telegram):
+- **Usernames, search and contacts** ([decision 019](../learning-journal/decisions/019-usernames-search-and-contacts.md)):
+  U-01 username (before F-06, whose settings panel edits it) · U-02 search · U-03 contacts · U-04 privacy settings
+  · U-05 report a user. U-04 and U-05 ship with U-02, because search is what lets strangers find you.
+- **Devices:** the list of your logins (`LoginSession`, decision 016) with "End session" and "End all other
+  sessions".
+- **Saved Messages:** a chat with yourself (`POST /chats/` refuses your own number today).
+- **Push notifications with the tab closed** (Web Push, a service worker); needs its own decision (VAPID keys,
+  what a notification may show).
+- **Forward a message** (with "Forwarded from") · **link previews** (fetched by the server, which needs its own
+  limits: a preview fetch must not reach internal addresses) · **bio** on a profile page · **delete my account**.
+
 ## Phase 4: big items, each with its own decision
 
 Photos, files and voice messages · reactions · group chats (they change `Chat(user1, user2)` and the scaling plan).
+Later, if ever: phone verification by SMS (T-36), message requests from strangers (decision 013, option c), voice
+and video calls, channels, bots, stickers, polls, stories, secret chats.
 Reconsider React here ([decision 018](../learning-journal/decisions/018-plain-js-not-react.md#when-another-option-is-better)).
 
 ## Open choices
